@@ -1,0 +1,418 @@
+// Atlas Markets AI — data model
+//
+// Conventions:
+//  - Money and quantities are Decimal, never Float. Binary floating point cannot
+//    represent 0.1 exactly, and rounding drift in a portfolio's cost basis is the
+//    kind of bug users notice and never forgive.
+//  - Timestamps are UTC. Market-local time is derived at render from the exchange's
+//    timezone; storing local time makes every cross-market query wrong.
+//  - Engine output is append-only, so a past recommendation can be audited against
+//    what was actually known when it was made.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Identity ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts   Account[]
+  sessions   Session[]
+  watchlists Watchlist[]
+  portfolios Portfolio[]
+  alerts     Alert[]
+  auditLogs  AuditLog[]
+
+  @@index([role])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+/// OAuth provider links (Google / Apple / GitHub) — NextAuth-compatible shape.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ── Instruments ─────────────────────────────────────────────────────────────────
+
+enum AssetKind {
+  EQUITY
+  CRYPTO
+}
+
+enum Market {
+  NYSE
+  NASDAQ
+  LSE
+  FRA
+  EURONEXT
+  HKEX
+  TSE
+  ASX
+  TSX
+  CRYPTO
+}
+
+/// One table for both asset classes: watchlists, portfolios, alerts and scores all
+/// treat them uniformly, so splitting equity and crypto would force a union in
+/// every one of those queries. Kind-specific fields live in the profile tables.
+model Asset {
+  id        String    @id @default(cuid())
+  symbol    String
+  market    Market
+  kind      AssetKind
+  name      String
+  currency  String    @default("USD")
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  equityProfile EquityProfile?
+  cryptoProfile CryptoProfile?
+
+  watchlistItems WatchlistItem[]
+  positions      Position[]
+  alerts         Alert[]
+  scores         ScoreSnapshot[]
+
+  @@unique([symbol, market])
+  @@index([kind])
+  @@index([name])
+}
+
+model EquityProfile {
+  assetId     String  @id
+  exchange    String?
+  country     String?
+  sector      String?
+  industry    String?
+  website     String?
+  logoUrl     String?
+  description String? @db.Text
+  employees   Int?
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([sector])
+  @@index([country])
+}
+
+model CryptoProfile {
+  assetId       String  @id
+  /// Provider-specific coin identifier (e.g. CoinGecko's "bitcoin").
+  externalId    String?
+  maxSupply     Decimal? @db.Decimal(38, 8)
+  genesisDate   DateTime?
+  githubRepoUrl String?
+  whitepaperUrl String?
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+// ── Engine output ───────────────────────────────────────────────────────────────
+
+enum Recommendation {
+  STRONG_SELL
+  SELL
+  HOLD
+  BUY
+  STRONG_BUY
+}
+
+/// Append-only. Never updated in place — the point is the history.
+model ScoreSnapshot {
+  id             String         @id @default(cuid())
+  assetId        String
+  score          Decimal        @db.Decimal(5, 2)
+  recommendation Recommendation
+  /// 0-100. Deliberately separate from score: it measures how much was known.
+  confidence     Int
+  /// Share of nominal factor weight that was actually available, 0-1.
+  coverage       Decimal        @db.Decimal(4, 3)
+  /// Factors that could not be scored, with reasons.
+  omitted        Json
+  /// Provider ids that contributed data.
+  sources        String[]
+  computedAt     DateTime       @default(now())
+
+  asset      Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  factors    ScoreFactor[]
+  signals    ScoreSignal[]
+
+  // Serves "latest score per asset" and the score history chart.
+  @@index([assetId, computedAt])
+  @@index([recommendation, computedAt])
+  @@index([computedAt])
+}
+
+model ScoreFactor {
+  id              String  @id @default(cuid())
+  snapshotId      String
+  factor          String
+  score           Decimal @db.Decimal(5, 2)
+  confidence      Decimal @db.Decimal(4, 3)
+  nominalWeight   Decimal @db.Decimal(5, 2)
+  /// Weight after renormalizing away unavailable factors.
+  effectiveWeight Decimal @db.Decimal(5, 2)
+
+  snapshot ScoreSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+}
+
+/// The citation trail. Every datum that moved a score is recorded here, which is
+/// what makes "cite which data points influenced the decision" auditable after
+/// the fact rather than merely rendered at request time.
+model ScoreSignal {
+  id         String @id @default(cuid())
+  snapshotId String
+  factor     String
+  label      String
+  value      String
+  direction  String
+  weight     Decimal @db.Decimal(4, 3)
+  /// Provider the underlying value came from.
+  source     String
+
+  snapshot ScoreSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+}
+
+// ── Watchlists ──────────────────────────────────────────────────────────────────
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model WatchlistItem {
+  id          String   @id @default(cuid())
+  watchlistId String
+  assetId     String
+  note        String?
+  addedAt     DateTime @default(now())
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  asset     Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, assetId])
+  @@index([assetId])
+}
+
+// ── Portfolio ───────────────────────────────────────────────────────────────────
+
+model Portfolio {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  baseCurrency String  @default("USD")
+  createdAt   DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positions Position[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Position {
+  id          String @id @default(cuid())
+  portfolioId String
+  assetId     String
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  asset     Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  lots      Lot[]
+
+  @@unique([portfolioId, assetId])
+  @@index([assetId])
+}
+
+/// Individual purchases, not a single averaged cost basis.
+///
+/// Tax treatment (FIFO/LIFO/specific-identification) and holding-period rules need
+/// per-purchase dates. Averaging at write time destroys that information
+/// irrecoverably, and users discover the loss only at tax time.
+model Lot {
+  id         String   @id @default(cuid())
+  positionId String
+  quantity   Decimal  @db.Decimal(28, 10)
+  pricePaid  Decimal  @db.Decimal(20, 8)
+  fees       Decimal  @default(0) @db.Decimal(20, 8)
+  purchasedAt DateTime
+  /// Set when the lot is closed; null while open.
+  soldAt     DateTime?
+  soldPrice  Decimal? @db.Decimal(20, 8)
+  createdAt  DateTime @default(now())
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@index([positionId])
+  @@index([purchasedAt])
+}
+
+// ── Alerts ──────────────────────────────────────────────────────────────────────
+
+enum AlertType {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PERCENT_MOVE
+  VOLUME_SPIKE
+  RSI_ABOVE
+  RSI_BELOW
+  MACD_CROSSOVER
+  RECOMMENDATION_CHANGE
+  BREAKING_NEWS
+}
+
+enum AlertChannel {
+  EMAIL
+  PUSH
+  SMS
+  TELEGRAM
+  DISCORD
+}
+
+model Alert {
+  id        String    @id @default(cuid())
+  userId    String
+  assetId   String
+  type      AlertType
+  /// Type-specific parameters (threshold, period, direction).
+  params    Json
+  channels  AlertChannel[]
+  enabled   Boolean   @default(true)
+  /// Suppresses repeat firing while a condition stays true.
+  cooldownMinutes Int  @default(60)
+  lastFiredAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset      Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  deliveries AlertDelivery[]
+
+  @@index([userId])
+  // Serves the evaluation sweep: enabled alerts for a given asset.
+  @@index([assetId, enabled])
+}
+
+/// One row per channel per firing. Separate from Alert so that a Telegram outage
+/// does not mark the email delivery as sent, and so retries are per-channel.
+model AlertDelivery {
+  id        String       @id @default(cuid())
+  alertId   String
+  channel   AlertChannel
+  status    DeliveryStatus @default(PENDING)
+  attempts  Int          @default(0)
+  error     String?
+  payload   Json
+  createdAt DateTime     @default(now())
+  sentAt    DateTime?
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId])
+  @@index([status, createdAt])
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ── Ops ─────────────────────────────────────────────────────────────────────────
+
+/// Provider usage telemetry, for quota tracking and the admin health view.
+model ProviderCall {
+  id         String   @id @default(cuid())
+  provider   String
+  capability String
+  success    Boolean
+  /// Populated on failure with the UnavailableReason.
+  reason     String?
+  latencyMs  Int
+  createdAt  DateTime @default(now())
+
+  @@index([provider, createdAt])
+  @@index([success, createdAt])
+}
+
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean  @default(false)
+  description String?
+  /// Optional percentage rollout, 0-100.
+  rolloutPct  Int?
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  target    String
+  /// Before/after state for the change.
+  metadata  Json
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}

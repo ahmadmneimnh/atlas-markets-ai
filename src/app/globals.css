@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: ui-sans-serif, -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+    --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', monospace;
+  }
+
+  html {
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-canvas text-ink;
+    /* Two low-opacity radial washes give the black canvas depth without
+       introducing a visible gradient band. */
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212, 175, 55, 0.07), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 10%, rgba(120, 140, 255, 0.04), transparent);
+    background-attachment: fixed;
+    font-feature-settings: 'cv02', 'cv03', 'cv04';
+  }
+
+  /* Tabular figures everywhere numbers change: without this, a ticking price
+     shifts horizontally on every update because glyph widths differ. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    @apply bg-gold/25 text-ink;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.35);
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-gold/60 ring-offset-2 ring-offset-canvas;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply border border-glass-border bg-glass backdrop-blur-xl;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .glass-hover {
+    @apply transition-all duration-300;
+  }
+  .glass-hover:hover {
+    @apply border-gold/25 bg-glass-strong;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 40px rgba(0, 0, 0, 0.6),
+      0 0 28px rgba(212, 175, 55, 0.08);
+    transform: translateY(-2px);
+  }
+
+  .gold-text {
+    @apply bg-gradient-to-br from-gold-soft via-gold to-gold-deep bg-clip-text text-transparent;
+  }
+
+  .hairline {
+    @apply border-glass-border;
+  }
+
+  /* Loading placeholder. Deliberately shapeless — a skeleton shaped like a number
+     invites the eye to read a value that does not exist yet. */
+  .skeleton {
+    @apply rounded bg-glass-strong;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

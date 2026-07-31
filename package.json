@@ -33,7 +33,9 @@
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "stack:up": "docker compose -f infra/docker-compose.yml --profile full up --build",
-    "stack:down": "docker compose -f infra/docker-compose.yml --profile full down"
+    "stack:down": "docker compose -f infra/docker-compose.yml --profile full down",
+    "auth:apple-secret": "node scripts/apple-client-secret.mjs",
+    "auth:secret": "node -e \"console.log('AUTH_SECRET=' + require('crypto').randomBytes(32).toString('base64'))\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

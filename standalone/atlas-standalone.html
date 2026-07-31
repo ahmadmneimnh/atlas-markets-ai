@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Atlas Markets AI — Standalone</title>
+<style>
+  :root{
+    --canvas:#05060a; --raised:#0b0d14; --sunken:#020308;
+    --glass:rgba(255,255,255,.035); --glass-strong:rgba(255,255,255,.06);
+    --border:rgba(255,255,255,.09);
+    --gold:#d4af37; --gold-soft:#e8cd7a; --gold-deep:#a8862a;
+    --ink:#f4f5f7; --muted:#9aa1ae; --faint:#5e6572;
+    --bull:#2ecc8f; --bear:#ff5d6c; --warn:#f0a95c;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--canvas); color:var(--ink); min-height:100vh;
+    font-family:ui-sans-serif,-apple-system,'SF Pro Display','Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212,175,55,.07), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 10%, rgba(120,140,255,.04), transparent);
+    background-attachment:fixed;
+  }
+  .tnum{font-variant-numeric:tabular-nums;font-family:var(--mono)}
+  .wrap{max-width:1400px;margin:0 auto;padding:0 24px}
+  header{position:sticky;top:0;z-index:50;border-bottom:1px solid rgba(255,255,255,.06);
+    background:rgba(5,6,10,.72);backdrop-filter:blur(20px)}
+  .hdr{display:flex;align-items:center;gap:16px;height:64px}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .gold-text{background:linear-gradient(135deg,var(--gold-soft),var(--gold),var(--gold-deep));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  main{padding:32px 0 64px}
+  h1{font-size:30px;font-weight:600;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:14px;line-height:1.6;margin-top:8px;max-width:70ch}
+  .card{border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(20px);
+    border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 32px rgba(0,0,0,.5)}
+  .sect{margin-top:40px}
+  .sect-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;
+    color:var(--muted);margin-bottom:14px;display:flex;justify-content:space-between;align-items:baseline;gap:16px}
+  .sect-title span{font-size:11px;text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400}
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+  .asset{padding:20px;cursor:pointer;transition:all .3s cubic-bezier(.16,1,.3,1);border:1px solid var(--border)}
+  .asset:hover{border-color:rgba(212,175,55,.25);background:var(--glass-strong);transform:translateY(-2px);
+    box-shadow:0 12px 40px rgba(0,0,0,.6),0 0 28px rgba(212,175,55,.08)}
+  .arow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+  .sym{font-size:16px;font-weight:600;letter-spacing:-.01em}
+  .nm{font-size:12px;color:var(--faint);margin-top:2px}
+  .badge{display:inline-flex;align-items:center;border-radius:999px;border:1px solid;
+    padding:3px 10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+  .b-STRONG_BUY{border-color:rgba(46,204,143,.4);background:rgba(46,204,143,.12);color:var(--bull)}
+  .b-BUY{border-color:rgba(46,204,143,.3);background:rgba(46,204,143,.08);color:var(--bull)}
+  .b-HOLD{border-color:var(--border);background:var(--glass);color:var(--muted)}
+  .b-SELL{border-color:rgba(255,93,108,.3);background:rgba(255,93,108,.08);color:var(--bear)}
+  .b-STRONG_SELL{border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.12);color:var(--bear)}
+  .dialrow{display:flex;align-items:center;gap:16px}
+  .price{font-size:18px;font-weight:600}
+  .delta{font-size:13px;font-weight:500}
+  .up{color:var(--bull)} .down{color:var(--bear)} .flat{color:var(--muted)}
+  .prov{display:inline-flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--faint);margin-top:6px}
+  .dot{width:4px;height:4px;border-radius:50%;background:rgba(212,175,55,.6);display:inline-block}
+  .confwrap{margin-top:16px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px}
+  .confrow{display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
+  .bar{height:4px;border-radius:999px;background:var(--glass-strong);margin-top:6px;overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:999px;background:rgba(212,175,55,.7)}
+  .bar>i.low{background:rgba(240,169,92,.7)}
+  .reasons{margin-top:12px;list-style:none;display:flex;flex-direction:column;gap:5px}
+  .reasons li{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+  .ddot{width:18px;height:18px;border-radius:50%;border:1px solid;display:inline-flex;
+    align-items:center;justify-content:center;font-size:9px;flex-shrink:0}
+  .d-bullish{color:var(--bull);border-color:rgba(46,204,143,.3);background:rgba(46,204,143,.08)}
+  .d-bearish{color:var(--bear);border-color:rgba(255,93,108,.3);background:rgba(255,93,108,.08)}
+  .d-neutral{color:var(--faint);border-color:var(--border);background:var(--glass)}
+  .empty{border:1px dashed rgba(255,255,255,.12);border-radius:12px;padding:40px 24px;text-align:center}
+  .empty p{color:var(--muted);font-size:14px;font-weight:500}
+  .empty small{display:block;color:var(--faint);font-size:12px;margin-top:8px;line-height:1.6;max-width:62ch;
+    margin-left:auto;margin-right:auto}
+  .note{border-color:rgba(212,175,55,.2);background:rgba(212,175,55,.06);padding:18px;margin-top:24px}
+  .note b{color:var(--ink);font-size:14px;font-weight:500} .note p{color:var(--muted);font-size:12px;line-height:1.7;margin-top:6px}
+  code{font-family:var(--mono);font-size:11px;background:var(--sunken);padding:2px 6px;border-radius:4px;color:var(--gold-soft)}
+  .skel{height:210px;border-radius:16px;background:var(--glass-strong);
+    background-image:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);
+    background-size:200% 100%;animation:sh 1.6s linear infinite}
+  @keyframes sh{0%{background-position:-200% 0}100%{background-position:200% 0}}
+  dialog{border:none;background:transparent;padding:0;max-width:760px;width:calc(100% - 32px)}
+  dialog::backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(6px)}
+  .modal{padding:28px;max-height:86vh;overflow:auto;background:var(--raised)}
+  .fx{border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px;margin-bottom:10px}
+  .fxh{display:flex;align-items:center;gap:12px;font-size:13px}
+  .fxh b{width:104px;text-transform:capitalize;font-weight:500}
+  .sig{display:flex;align-items:flex-start;gap:10px;padding:9px;border:1px solid rgba(255,255,255,.05);
+    border-radius:8px;margin-top:7px}
+  .sig p{font-size:12px;color:var(--muted)} .sig small{font-size:11px;color:var(--faint);display:block;margin-top:2px}
+  .x{position:absolute;top:16px;right:20px;background:none;border:none;color:var(--faint);
+    font-size:26px;cursor:pointer;line-height:1}
+  footer{border-top:1px solid rgba(255,255,255,.06);margin-top:64px;padding:28px 0;font-size:12px;
+    color:var(--faint);line-height:1.7}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<header><div class="wrap hdr">
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 2 3 20h4l5-10 5 10h4L12 2Z" fill="url(#g)"/>
+    <defs><linearGradient id="g" x1="3" y1="2" x2="21" y2="20"><stop stop-color="#e8cd7a"/><stop offset="1" stop-color="#a8862a"/></linearGradient></defs></svg>
+    Atlas <span class="gold-text">Markets</span>
+  </div>
+  <div style="margin-left:auto;font-size:11px;color:var(--faint)">Standalone build · no server</div>
+</div></header>
+
+<main class="wrap">
+  <h1>Global market <span class="gold-text">intelligence</span></h1>
+  <p class="sub" id="lede">Loading live crypto data…</p>
+  <div class="sect"><div class="grid" id="grid">
+    <div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div>
+  </div></div>
+  <div id="failed"></div>
+</main>
+
+<dialog id="dlg"><div class="card modal" style="position:relative">
+  <button class="x" onclick="document.getElementById('dlg').close()">&times;</button>
+  <div id="dlgBody"></div>
+</div></dialog>
+
+<footer><div class="wrap">
+  <p><b style="color:var(--muted)">Not investment advice.</b> Algorithmic scores from public market data, for research only.</p>
+  <p style="margin-top:6px">Every figure is labelled with the API it came from. Factors without data are excluded from
+  scoring and listed as unscored — never estimated or filled with a neutral placeholder.</p>
+</div></footer>
+
+<script>
+/* ────────────────────────────────────────────────────────────────────────────
+   Atlas Markets AI — standalone build.
+
+   Same domain logic as the full app (src/lib/analysis/*), ported to plain JS so
+   it runs from a file:// URL with no build step. Data comes from Binance and
+   CoinGecko public endpoints, which need no API key and send permissive CORS
+   headers.
+
+   The no-fabrication rule is preserved exactly: indicators return undefined
+   rather than a filled value when history is short, unavailable factors are
+   dropped from the weighted mean (never scored a neutral 50), and below 25%
+   coverage no recommendation is produced at all.
+
+   What this build cannot do, by construction: anything needing a server. API
+   keys can't be used from a browser, so equities (Finnhub) and news are absent.
+   Run the full Next.js app for those.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+const COINS = [
+  ['BTC','Bitcoin','bitcoin'],     ['ETH','Ethereum','ethereum'],
+  ['SOL','Solana','solana'],       ['XRP','XRP','ripple'],
+  ['BNB','BNB','binancecoin'],     ['ADA','Cardano','cardano'],
+  ['DOGE','Dogecoin','dogecoin'],  ['AVAX','Avalanche','avalanche-2'],
+  ['LINK','Chainlink','chainlink'],['DOT','Polkadot','polkadot'],
+];
+
+/* ── Indicators (ported from src/lib/analysis/indicators.ts) ───────────────── */
+
+function sma(v,p){ if(p<=0||v.length<p) return undefined;
+  let s=0; for(let i=v.length-p;i<v.length;i++) s+=v[i]; return s/p; }
+
+function emaSeries(v,p){ if(p<=0||v.length<p) return [];
+  const k=2/(p+1); let seed=0; for(let i=0;i<p;i++) seed+=v[i];
+  let prev=seed/p; const out=[prev];
+  for(let i=p;i<v.length;i++){ prev=v[i]*k+prev*(1-k); out.push(prev); } return out; }
+
+function rsi(c,p=14){ if(c.length<p+1) return undefined;
+  let g=0,l=0;
+  for(let i=1;i<=p;i++){ const d=c[i]-c[i-1]; if(d>=0) g+=d; else l-=d; }
+  let ag=g/p, al=l/p;
+  for(let i=p+1;i<c.length;i++){ const d=c[i]-c[i-1];
+    ag=(ag*(p-1)+(d>0?d:0))/p; al=(al*(p-1)+(d<0?-d:0))/p; }
+  if(al===0) return ag===0?50:100;
+  return 100-100/(1+ag/al); }
+
+function macd(c,f=12,sl=26,sp=9){ if(c.length<sl+sp) return undefined;
+  const fs=emaSeries(c,f), ss=emaSeries(c,sl);
+  if(!fs.length||!ss.length) return undefined;
+  const off=fs.length-ss.length, line=[];
+  for(let i=0;i<ss.length;i++) line.push(fs[i+off]-ss[i]);
+  const sig=emaSeries(line,sp); if(sig.length<2) return undefined;
+  const so=line.length-sig.length, last=sig.length-1;
+  const hNow=line[last+so]-sig[last], hPrev=line[last-1+so]-sig[last-1];
+  let cross=null;
+  if(hPrev<=0&&hNow>0) cross='bullish'; else if(hPrev>=0&&hNow<0) cross='bearish';
+  return {macd:line[last+so],signal:sig[last],histogram:hNow,crossover:cross}; }
+
+function bollinger(c,p=20,sd=2){ const mid=sma(c,p); if(mid===undefined) return undefined;
+  const w=c.slice(-p); let vr=0; for(const x of w) vr+=(x-mid)**2;
+  const s=Math.sqrt(vr/p), up=mid+sd*s, lo=mid-sd*s, price=c[c.length-1];
+  return {upper:up,middle:mid,lower:lo,percentB:up===lo?.5:(price-lo)/(up-lo)}; }
+
+function trueRanges(k){ const o=[];
+  for(let i=1;i<k.length;i++){ const c=k[i], pc=k[i-1].close;
+    o.push(Math.max(c.high-c.low,Math.abs(c.high-pc),Math.abs(c.low-pc))); } return o; }
+
+function wilder(v,p){ if(v.length<p) return [];
+  let s=0; for(let i=0;i<p;i++) s+=v[i]; let prev=s/p; const o=[prev];
+  for(let i=p;i<v.length;i++){ prev=(prev*(p-1)+v[i])/p; o.push(prev); } return o; }
+
+function atr(k,p=14){ const s=wilder(trueRanges(k),p); return s.length?s[s.length-1]:undefined; }
+
+function adx(k,p=14){ if(k.length<p*2+1) return undefined;
+  const pdm=[],mdm=[];
+  for(let i=1;i<k.length;i++){ const up=k[i].high-k[i-1].high, dn=k[i-1].low-k[i].low;
+    pdm.push(up>dn&&up>0?up:0); mdm.push(dn>up&&dn>0?dn:0); }
+  const tr=wilder(trueRanges(k),p), pl=wilder(pdm,p), mi=wilder(mdm,p);
+  if(!tr.length||!pl.length||!mi.length) return undefined;
+  const dx=[];
+  for(let i=0;i<tr.length;i++){ if(tr[i]===0){dx.push(0);continue;}
+    const a=100*pl[i]/tr[i], b=100*mi[i]/tr[i], d=a+b;
+    dx.push(d===0?0:100*Math.abs(a-b)/d); }
+  const as=wilder(dx,p); if(!as.length) return undefined;
+  const lt=tr[tr.length-1];
+  return {adx:as[as.length-1],
+    plusDi:lt===0?0:100*pl[pl.length-1]/lt, minusDi:lt===0?0:100*mi[mi.length-1]/lt}; }
+
+function vwap(k){ if(!k.length) return undefined; let pv=0,v=0;
+  for(const c of k){ pv+=((c.high+c.low+c.close)/3)*c.volume; v+=c.volume; }
+  return v>0?pv/v:undefined; }   // undefined, never a plain average, when volume is absent
+
+function rangeStats(k){ if(!k.length) return undefined;
+  const w=k.slice(-252); let hi=-Infinity,lo=Infinity;
+  for(const c of w){ if(c.high>hi)hi=c.high; if(c.low<lo)lo=c.low; }
+  const p=k[k.length-1].close;
+  return {high52w:hi,low52w:lo,positionInRange:hi===lo?.5:(p-lo)/(hi-lo)}; }
+
+function maCross(c,f=50,s=200){ if(c.length<s+1) return null;
+  const pv=c.slice(0,-1);
+  const fn=sma(c,f),sn=sma(c,s),fp=sma(pv,f),sp2=sma(pv,s);
+  if([fn,sn,fp,sp2].some(x=>x===undefined)) return null;
+  if(fp<=sp2&&fn>sn) return 'golden';
+  if(fp>=sp2&&fn<sn) return 'death'; return null; }
+
+function momentum(c,b=20){ if(c.length<b+1) return undefined;
+  const n=c[c.length-1], t=c[c.length-1-b]; return t===0?undefined:((n-t)/t)*100; }
+
+function volumeRatio(k,p=20){ if(k.length<p+1) return undefined;
+  const w=k.slice(-p-1,-1); let s=0; for(const c of w) s+=c.volume;
+  const avg=s/w.length; return avg<=0?undefined:k[k.length-1].volume/avg; }
+
+function volatility(c,p=30){ if(c.length<p+1) return undefined; const r=[];
+  for(let i=c.length-p;i<c.length;i++) if(c[i-1]>0&&c[i]>0) r.push(Math.log(c[i]/c[i-1]));
+  if(r.length<2) return undefined;
+  const m=r.reduce((a,b)=>a+b,0)/r.length;
+  const v=r.reduce((a,x)=>a+(x-m)**2,0)/(r.length-1);
+  return Math.sqrt(v)*Math.sqrt(252)*100; }
+
+function maxDrawdown(c){ if(c.length<2) return undefined; let peak=c[0],worst=0;
+  for(const x of c){ if(x>peak) peak=x; if(peak>0){ const d=(peak-x)/peak; if(d>worst) worst=d; } }
+  return worst*100; }
+
+/* ── Factor scorers ───────────────────────────────────────────────────────── */
+
+const band=(v,bad,good)=> good===bad?50:Math.max(0,Math.min(100,((v-bad)/(good-bad))*100));
+
+function technical(candles,src){
+  if(!candles||candles.length<30) return {factor:'technical',unavailable:true,
+    reason:candles?`only ${candles.length} bars available; 30 required`:'no price history available'};
+  const c=candles.map(x=>x.close), price=c[c.length-1], C=[];
+  const add=(w,score,label,value,direction)=>C.push({weight:w,score,signal:{label,value,direction,weight:w,source:src}});
+
+  const r=rsi(c,14);
+  if(r!==undefined) add(.18,Math.max(0,Math.min(100,100-r)),'RSI(14)',r.toFixed(1),
+    r<30?'bullish':r>70?'bearish':'neutral');
+
+  const m=macd(c);
+  if(m){ const norm=price>0?(m.histogram/price)*100:0;
+    add(.18,50+Math.max(-50,Math.min(50,norm*25)),
+      m.crossover?`MACD ${m.crossover} crossover`:'MACD histogram',
+      m.histogram.toFixed(4), m.histogram>0?'bullish':m.histogram<0?'bearish':'neutral'); }
+
+  const s50=sma(c,50), s200=sma(c,200);
+  if(s50!==undefined){ const a50=price>s50; let sc=a50?65:35, lb='Price vs SMA(50)';
+    if(s200!==undefined){ const a200=price>s200;
+      sc=a50&&a200?80:(!a50&&!a200?20:50); lb='Price vs SMA(50)/SMA(200)'; }
+    add(.16,sc,lb, s200!==undefined?`${price.toFixed(2)} / ${s50.toFixed(2)} / ${s200.toFixed(2)}`
+      :`${price.toFixed(2)} / ${s50.toFixed(2)}`, sc>55?'bullish':sc<45?'bearish':'neutral'); }
+
+  const x=maCross(c);
+  if(x) add(.10,x==='golden'?88:12,
+    x==='golden'?'Golden cross (SMA50 × SMA200)':'Death cross (SMA50 × SMA200)','today',
+    x==='golden'?'bullish':'bearish');
+
+  const a=adx(candles,14);
+  if(a){ const st=Math.min(1,a.adx/50), dir=a.plusDi>=a.minusDi?1:-1;
+    add(.12,50+dir*st*35,`ADX(14) ${a.adx>25?'trending':'ranging'}`,
+      `${a.adx.toFixed(1)} (+DI ${a.plusDi.toFixed(1)} / -DI ${a.minusDi.toFixed(1)})`,
+      a.adx<20?'neutral':dir>0?'bullish':'bearish'); }
+
+  const b=bollinger(c,20);
+  if(b) add(.10,Math.max(0,Math.min(100,100-b.percentB*100)),'Bollinger %B',b.percentB.toFixed(2),
+    b.percentB<.2?'bullish':b.percentB>.8?'bearish':'neutral');
+
+  const rg=rangeStats(candles);
+  if(rg) add(.08,25+rg.positionInRange*50,'52-week range position',
+    `${(rg.positionInRange*100).toFixed(0)}% of range (${rg.low52w.toFixed(2)}–${rg.high52w.toFixed(2)})`,
+    rg.positionInRange>.75?'bullish':rg.positionInRange<.25?'bearish':'neutral');
+
+  const mo=momentum(c,20);
+  if(mo!==undefined) add(.10,50+Math.max(-40,Math.min(40,mo*1.5)),'20-bar momentum',
+    `${mo.toFixed(1)}%`, mo>2?'bullish':mo<-2?'bearish':'neutral');
+
+  const vr=volumeRatio(candles,20);
+  if(vr!==undefined){ const rising=(mo??0)>0;
+    add(.06,vr>1.5?(rising?75:25):50,'Volume vs 20-bar average',`${vr.toFixed(2)}×`,
+      vr>1.5?(rising?'bullish':'bearish'):'neutral'); }
+
+  const vw=vwap(candles.slice(-20));
+  if(vw!==undefined&&vw>0) add(.04,price>vw?62:38,
+    `Price ${price>vw?'above':'below'} 20-bar VWAP`,vw.toFixed(2),price>vw?'bullish':'bearish');
+
+  if(!C.length) return {factor:'technical',unavailable:true,reason:'no indicator had sufficient history'};
+  const tw=C.reduce((s,x)=>s+x.weight,0);
+  return {factor:'technical',score:C.reduce((s,x)=>s+x.score*x.weight,0)/tw,
+    confidence:Math.min(1,tw/1.1),
+    signals:C.sort((a,b)=>b.weight-a.weight).map(x=>x.signal)};
+}
+
+function fundamentalCrypto(m,src){
+  if(!m) return {factor:'fundamental',unavailable:true,reason:'no on-chain/network metrics available'};
+  const C=[]; const add=(w,score,label,value,direction)=>
+    C.push({weight:w,score,signal:{label,value,direction,weight:w,source:src}});
+
+  if(m.rank!==undefined) add(.20,band(m.rank,300,1),'Market cap rank',`#${m.rank}`,
+    m.rank<=20?'bullish':m.rank>150?'bearish':'neutral');
+
+  if(m.marketCap>0&&m.volume24h!==undefined){ const t=(m.volume24h/m.marketCap)*100;
+    add(.22,t>40?45:band(t,.2,12),'24h volume / market cap',`${t.toFixed(1)}%`,
+      t>3&&t<40?'bullish':t<.5?'bearish':'neutral'); }
+
+  if(m.circulatingSupply!==undefined&&m.maxSupply>0){
+    const share=(m.circulatingSupply/m.maxSupply)*100;
+    add(.20,band(share,30,95),'Circulating / max supply',`${share.toFixed(1)}%`,
+      share>80?'bullish':share<50?'bearish':'neutral'); }
+
+  if(m.githubCommits4w!==undefined) add(.22,band(m.githubCommits4w,0,120),
+    'Developer commits (4w)',String(m.githubCommits4w),
+    m.githubCommits4w>40?'bullish':m.githubCommits4w<5?'bearish':'neutral');
+
+  if(m.githubStars!==undefined) add(.10,band(m.githubStars,0,20000),'GitHub stars',
+    m.githubStars.toLocaleString('en-US'), m.githubStars>5000?'bullish':'neutral');
+
+  if(!C.length) return {factor:'fundamental',unavailable:true,reason:'provider returned no usable metrics'};
+  const tw=C.reduce((s,x)=>s+x.weight,0);
+  return {factor:'fundamental',score:C.reduce((s,x)=>s+x.score*x.weight,0)/tw,
+    confidence:Math.min(1,tw/.94), signals:C.sort((a,b)=>b.weight-a.weight).map(x=>x.signal)};
+}
+
+function risk(candles,src){
+  if(!candles||candles.length<31) return {factor:'risk',unavailable:true,
+    reason:'insufficient price history for risk measures'};
+  const c=candles.map(x=>x.close), price=c[c.length-1], C=[];
+  const add=(w,score,label,value,direction)=>
+    C.push({weight:w,score,signal:{label,value,direction,weight:w,source:src}});
+
+  const v=volatility(c,30);
+  if(v!==undefined){ const sc=band(v,150,35);   // crypto scale
+    add(.4,sc,'Annualised volatility (30d)',`${v.toFixed(1)}%`,
+      sc>60?'bullish':sc<40?'bearish':'neutral'); }
+
+  const dd=maxDrawdown(c.slice(-252));
+  if(dd!==undefined) add(.3,band(dd,70,10),'Max drawdown (1y)',`${dd.toFixed(1)}%`,
+    dd<20?'bullish':dd>50?'bearish':'neutral');
+
+  const a=atr(candles,14);
+  if(a!==undefined&&price>0){ const pct=(a/price)*100;
+    add(.2,band(pct,12,1),'ATR(14) as % of price',`${pct.toFixed(2)}%`,
+      pct<2.5?'bullish':pct>7?'bearish':'neutral'); }
+
+  const rg=rangeStats(candles);
+  if(rg){ const stretched=rg.positionInRange>.95;
+    add(.1,stretched?35:60, stretched?'Extended at 52-week high':'Not extended in 52-week range',
+      `${(rg.positionInRange*100).toFixed(0)}% of range`, stretched?'bearish':'neutral'); }
+
+  if(!C.length) return {factor:'risk',unavailable:true,reason:'no risk measure could be computed'};
+  const tw=C.reduce((s,x)=>s+x.weight,0);
+  return {factor:'risk',score:C.reduce((s,x)=>s+x.score*x.weight,0)/tw,
+    confidence:Math.min(1,tw), signals:C.sort((a,b)=>b.weight-a.weight).map(x=>x.signal)};
+}
+
+/* ── Engine (ported from src/lib/analysis/engine.ts) ───────────────────────── */
+
+const WEIGHTS={technical:30,fundamental:30,news:15,social:10,macro:10,risk:5};
+const MIN_COVERAGE=.25;
+
+function toRec(s){ return s<=30?'STRONG_SELL':s<=45?'SELL':s<=55?'HOLD':s<=70?'BUY':'STRONG_BUY'; }
+const REC_LABEL={STRONG_SELL:'Strong Sell',SELL:'Sell',HOLD:'Hold',BUY:'Buy',STRONG_BUY:'Strong Buy'};
+
+function scoreAsset(outcomes){
+  const avail=outcomes.filter(o=>!o.unavailable);
+  const omitted=outcomes.filter(o=>o.unavailable).map(o=>({factor:o.factor,reason:o.reason}));
+  const nominal=Object.values(WEIGHTS).reduce((a,b)=>a+b,0);
+  const availW=avail.reduce((s,o)=>s+WEIGHTS[o.factor],0);
+  const coverage=availW/nominal;
+
+  // Refuse rather than extrapolate. A number here would be indistinguishable
+  // from one backed by real evidence.
+  if(coverage<MIN_COVERAGE||!avail.length)
+    return {ok:false,coverage,omitted,
+      message:`Insufficient data to score: only ${(coverage*100).toFixed(0)}% of factor weight available (minimum 25%)`};
+
+  // Renormalize across surviving factors — missing factors are NOT scored 50.
+  const breakdown=avail.map(o=>({factor:o.factor,nominalWeight:WEIGHTS[o.factor],
+    effectiveWeight:(WEIGHTS[o.factor]/availW)*100,score:o.score,confidence:o.confidence,signals:o.signals}));
+
+  const composite=breakdown.reduce((s,b)=>s+b.score*(b.effectiveWeight/100),0);
+  const depth=breakdown.reduce((s,b)=>s+b.confidence*(b.effectiveWeight/100),0);
+
+  const topReasons=breakdown
+    .flatMap(b=>b.signals.map(sig=>({sig,impact:sig.weight*(b.effectiveWeight/100)})))
+    .filter(x=>x.sig.direction!=='neutral')
+    .sort((a,b)=>b.impact-a.impact).slice(0,6).map(x=>x.sig);
+
+  return {ok:true,score:Math.round(composite*10)/10,recommendation:toRec(composite),
+    confidence:Math.round(coverage*depth*100),
+    breakdown:breakdown.sort((a,b)=>b.effectiveWeight-a.effectiveWeight),
+    omitted,topReasons,
+    sources:[...new Set(breakdown.flatMap(b=>b.signals.map(s=>s.source)))],
+    computedAt:new Date()};
+}
+
+/* ── Data fetching ────────────────────────────────────────────────────────── */
+
+async function getJSON(url){
+  const res=await fetch(url,{cache:'no-store'});
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function loadCoin([sym,name,cgId]){
+  const out={sym,name,errors:[]};
+
+  // Binance klines: real volume, which CoinGecko's /ohlc omits.
+  try{
+    const k=await getJSON(`https://api.binance.com/api/v3/klines?symbol=${sym}USDT&interval=1d&limit=260`);
+    out.candles=k.map(r=>({time:new Date(r[0]),open:+r[1],high:+r[2],low:+r[3],close:+r[4],volume:+r[5]}));
+    out.candleSrc='binance';
+  }catch(e){ out.errors.push(`klines: ${e.message}`); }
+
+  try{
+    const t=await getJSON(`https://api.binance.com/api/v3/ticker/24hr?symbol=${sym}USDT`);
+    out.quote={price:+t.lastPrice,changePercent:+t.priceChangePercent,source:'binance',asOf:new Date(t.closeTime)};
+  }catch(e){ out.errors.push(`ticker: ${e.message}`); }
+
+  try{
+    const d=await getJSON(`https://api.coingecko.com/api/v3/coins/${cgId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=true&sparkline=false`);
+    const md=d.market_data||{};
+    const num=v=>(typeof v==='number'&&isFinite(v))?v:undefined;
+    out.metrics={rank:num(d.market_cap_rank),marketCap:num(md.market_cap?.usd),
+      volume24h:num(md.total_volume?.usd),circulatingSupply:num(md.circulating_supply),
+      maxSupply:num(md.max_supply),
+      githubCommits4w:num(d.developer_data?.commit_count_4_weeks),
+      githubStars:num(d.developer_data?.stars)};
+    out.metricSrc='coingecko';
+  }catch(e){ out.errors.push(`metrics: ${e.message}`); }
+
+  return out;
+}
+
+/* ── Render ───────────────────────────────────────────────────────────────── */
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtPrice=n=>n>=1000?n.toLocaleString('en-US',{maximumFractionDigits:2})
+  :n>=1?n.toFixed(2):n>=.01?n.toFixed(4):n.toPrecision(4);
+const dialColor=s=>s>=71?'#2ecc8f':s>=56?'#7bd6a8':s>=46?'#d4af37':s>=31?'#f0a95c':'#ff5d6c';
+
+function dial(score,size=78){
+  const r=(size-10)/2, circ=2*Math.PI*r, s=Math.max(0,Math.min(100,score));
+  const col=dialColor(s);
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex-shrink:0">
+    <svg width="${size}" height="${size}" style="transform:rotate(-90deg)">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="5"/>
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col}" stroke-width="5"
+        stroke-linecap="round" stroke-dasharray="${(s/100)*circ} ${circ}"/></svg>
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <span class="tnum" style="font-size:${size>100?24:18}px;font-weight:600;color:${col}">${s.toFixed(0)}</span>
+      <span style="font-size:8px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase">AI Score</span>
+    </div></div>`;
+}
+
+const dirDot=d=>`<span class="ddot d-${d}">${d==='bullish'?'▲':d==='bearish'?'▼':'–'}</span>`;
+
+function card(item){
+  const {sym,name,result,quote}=item;
+  if(!result.ok){
+    return `<div class="card asset" data-sym="${sym}">
+      <div class="arow"><div><div class="sym">${sym}</div><div class="nm">${esc(name)}</div></div></div>
+      <p style="font-size:12px;color:var(--faint);line-height:1.6">${esc(result.message)}</p>
+      <p style="font-size:11px;color:var(--faint);margin-top:10px">Tap for the per-factor reasons.</p></div>`;
+  }
+  const s=result, low=s.confidence<40;
+  const q=quote?`<div class="price tnum">$${fmtPrice(quote.price)}</div>
+    <div class="delta tnum ${quote.changePercent>0?'up':quote.changePercent<0?'down':'flat'}">
+      ${quote.changePercent>0?'+':''}${quote.changePercent.toFixed(2)}%</div>
+    <div class="prov"><span class="dot"></span>${quote.source}</div>`
+    :`<p style="font-size:12px;color:var(--faint)">Price unavailable</p>`;
+
+  return `<div class="card asset" data-sym="${sym}">
+    <div class="arow">
+      <div><div class="sym">${sym}</div><div class="nm">${esc(name)}</div></div>
+      <span class="badge b-${s.recommendation}">${REC_LABEL[s.recommendation]}</span>
+    </div>
+    <div class="dialrow">${dial(s.score)}<div style="min-width:0">${q}</div></div>
+    <div class="confwrap">
+      <div class="confrow"><span>Confidence</span>
+        <span class="tnum" style="color:${low?'var(--warn)':'var(--muted)'}">${s.confidence}%</span></div>
+      <div class="bar"><i class="${low?'low':''}" style="width:${s.confidence}%"></i></div>
+    </div>
+    <ul class="reasons">${s.topReasons.slice(0,2).map(r=>
+      `<li>${dirDot(r.direction)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.label)}</span></li>`).join('')}</ul>
+  </div>`;
+}
+
+function detail(item){
+  const {sym,name,result}=item;
+  if(!result.ok){
+    return `<h2 style="font-size:22px;font-weight:600">${sym} <span style="color:var(--faint);font-size:14px">${esc(name)}</span></h2>
+      <div class="empty" style="margin-top:20px"><p>No recommendation could be produced</p>
+      <small>${esc(result.message)}</small></div>
+      <div class="sect-title" style="margin-top:24px">Factors not scored</div>
+      ${result.omitted.map(o=>`<div class="fx"><b style="text-transform:capitalize">${o.factor}</b>
+        <p style="font-size:12px;color:var(--faint);margin-top:4px">${esc(o.reason)}</p></div>`).join('')}`;
+  }
+  const s=result;
+  return `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      ${dial(s.score,120)}
+      <div><h2 style="font-size:22px;font-weight:600">${sym}
+        <span style="color:var(--faint);font-size:14px;font-weight:400">${esc(name)}</span></h2>
+        <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span class="badge b-${s.recommendation}">${REC_LABEL[s.recommendation]}</span>
+          <span class="tnum" style="font-size:13px;color:var(--muted)">Confidence ${s.confidence}%</span></div>
+        <p style="font-size:11px;color:var(--faint);margin-top:8px">
+          Computed from ${s.sources.length} source${s.sources.length===1?'':'s'}: ${s.sources.join(', ')}</p>
+      </div></div>
+
+    ${s.confidence<40?`<p style="margin-top:16px;border:1px solid rgba(240,169,92,.25);background:rgba(240,169,92,.08);
+      color:var(--warn);font-size:12px;line-height:1.6;padding:10px 12px;border-radius:8px">
+      Low confidence — this score rests on limited evidence. Review the unscored factors below.</p>`:''}
+
+    <div class="sect-title" style="margin-top:26px">Why this rating <span>ranked by contribution</span></div>
+    ${s.topReasons.map(r=>`<div class="sig">${dirDot(r.direction)}
+      <div style="flex:1;min-width:0"><p style="color:var(--ink);font-size:13px">${esc(r.label)}</p>
+      <small class="tnum">${esc(r.value)}</small></div>
+      <span class="prov" style="margin:0"><span class="dot"></span>${r.source}</span></div>`).join('')}
+
+    <div class="sect-title" style="margin-top:26px">Factor breakdown <span>weights renormalized</span></div>
+    ${s.breakdown.map(b=>`<div class="fx">
+      <div class="fxh"><b>${b.factor}</b>
+        <div class="bar" style="flex:1;margin:0"><i style="width:${Math.max(0,Math.min(100,b.score))}%"></i></div>
+        <span class="tnum" style="width:34px;text-align:right;font-weight:600">${b.score.toFixed(0)}</span>
+        <span class="tnum" style="width:58px;text-align:right;color:var(--faint);font-size:11px">${b.effectiveWeight.toFixed(0)}% wt</span></div>
+      ${b.nominalWeight!==b.effectiveWeight?`<p style="font-size:11px;color:var(--faint);margin-top:8px">
+        Nominal ${b.nominalWeight}% → ${b.effectiveWeight.toFixed(1)}% after renormalizing across available factors.</p>`:''}
+      ${b.signals.map(sg=>`<div class="sig">${dirDot(sg.direction)}
+        <div style="flex:1;min-width:0"><p>${esc(sg.label)}</p><small class="tnum">${esc(sg.value)}</small></div>
+        <span class="prov" style="margin:0"><span class="dot"></span>${sg.source}</span></div>`).join('')}
+    </div>`).join('')}
+
+    ${s.omitted.length?`<div class="sect-title" style="margin-top:26px">Factors not scored
+      <span>excluded, not estimated</span></div>
+      ${s.omitted.map(o=>`<div class="fx"><b style="text-transform:capitalize">${o.factor}</b>
+        <p style="font-size:12px;color:var(--faint);margin-top:4px">${esc(o.reason)}</p></div>`).join('')}
+      <p style="font-size:11px;color:var(--faint);margin-top:12px;line-height:1.7">
+        These contributed nothing. Their weight was redistributed across the factors that had data —
+        they were not assigned a neutral value, because a neutral value is a number no evidence supports.</p>`:''}`;
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────────────── */
+
+let ITEMS=[];
+
+async function main(){
+  const grid=document.getElementById('grid');
+  const results=[];
+
+  // Sequential with a small gap: CoinGecko's public tier rate-limits aggressively,
+  // and a parallel burst reliably trips it.
+  for(const coin of COINS){
+    const raw=await loadCoin(coin);
+    const outcomes=[
+      technical(raw.candles,raw.candleSrc||'binance'),
+      fundamentalCrypto(raw.metrics,raw.metricSrc||'coingecko'),
+      {factor:'news',unavailable:true,reason:'news requires a server-side API key — unavailable in the standalone build'},
+      {factor:'social',unavailable:true,reason:'no social data provider configured (requires Reddit / X / StockTwits credentials)'},
+      {factor:'macro',unavailable:true,reason:'no macroeconomic data provider configured (requires FRED or equivalent)'},
+      risk(raw.candles,raw.candleSrc||'binance'),
+    ];
+    const item={sym:raw.sym,name:raw.name,quote:raw.quote,result:scoreAsset(outcomes),errors:raw.errors};
+    results.push(item); ITEMS=results;
+
+    grid.innerHTML=results.map(card).join('');
+    await new Promise(r=>setTimeout(r,320));
+  }
+
+  const scored=results.filter(r=>r.result.ok);
+  document.getElementById('lede').textContent = scored.length
+    ? `${scored.length} of ${results.length} assets scored from live Binance and CoinGecko data. Every figure is labelled with its source; factors without data are excluded rather than estimated.`
+    : 'No asset could be scored — every data request failed. Nothing is shown rather than estimated. Check your internet connection, or see the note below.';
+
+  if(!scored.length){
+    document.getElementById('failed').innerHTML=`<div class="card note">
+      <b>Could not reach the market data APIs</b>
+      <p>Requests to <code>api.binance.com</code> and <code>api.coingecko.com</code> failed. Usually one of:
+      no internet connection; a network/VPN/firewall that blocks them; or a browser extension blocking requests.
+      Binance is also unavailable in some regions.</p>
+      <p style="margin-top:8px">This page deliberately shows nothing rather than filling the gap with
+      placeholder numbers.</p></div>`;
+  }
+}
+
+document.addEventListener('click',e=>{
+  const el=e.target.closest('.asset'); if(!el) return;
+  const item=ITEMS.find(i=>i.sym===el.dataset.sym); if(!item) return;
+  document.getElementById('dlgBody').innerHTML=detail(item);
+  document.getElementById('dlg').showModal();
+});
+
+main();
+</script>
+</body>
+</html>

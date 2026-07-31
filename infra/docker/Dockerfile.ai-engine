@@ -1,0 +1,33 @@
+# Atlas Markets AI — Python scoring engine.
+#
+# Build context is services/ai-engine (see docker-compose.yml): this service
+# shares no code with the Node workspace, only the wire contract.
+
+FROM python:3.11-slim AS base
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+FROM base AS deps
+WORKDIR /srv
+COPY requirements.txt ./
+RUN pip install --prefix=/install -r requirements.txt
+
+FROM base AS runner
+WORKDIR /srv
+
+# Non-root. The engine parses attacker-influenceable input (news text reaches it
+# through the news factor), so it should not run as root even behind a private
+# network.
+RUN useradd --create-home --uid 1001 atlas
+
+COPY --from=deps /install /usr/local
+COPY --chown=atlas:atlas app ./app
+
+USER atlas
+EXPOSE 8000
+
+# One worker per container. Scaling is horizontal — the orchestrator adds
+# replicas — which keeps each container's memory footprint predictable and lets
+# the scheduler place them, rather than hiding N processes inside one.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

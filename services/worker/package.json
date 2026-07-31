@@ -1,0 +1,27 @@
+{
+  "name": "@atlas/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BullMQ workers: scheduled market-data refresh, scoring, alert evaluation, notification fan-out",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
+    "start": "dotenv -e ../../.env -- tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@atlas/core": "*",
+    "@atlas/db": "*",
+    "bullmq": "^5.34.6",
+    "ioredis": "^5.4.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@atlas/config": "*",
+    "@types/node": "^22.10.5",
+    "dotenv-cli": "^8.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

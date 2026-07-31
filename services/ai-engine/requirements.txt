@@ -1,0 +1,9 @@
+# Runtime dependencies, pinned to minimums. Mirrors [project.dependencies] in
+# pyproject.toml for environments (and Docker layers) that install with plain pip.
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.4
+pydantic-settings>=2.7.0
+httpx>=0.28.1
+structlog>=24.4.0
+prometheus-client>=0.21.1

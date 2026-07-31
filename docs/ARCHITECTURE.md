@@ -60,39 +60,56 @@ seeing a confident "STRONG BUY, 92%" that was computed from placeholder inputs.
 
 ### Why a BFF rather than a separate API service
 
-At this stage the only consumer is the web app, so a separate backend service would buy
-nothing but a network hop and a deployment. The domain core is already framework-free
-(`src/lib/analysis/**` imports nothing from Next), so when a second consumer appears —
-a mobile client, or the Python microservices in the spec — it lifts out into its own
-service without a rewrite. That is the cheap version of the option; paying for it now is
-not.
+The web app is the only consumer of the read path, so a separate API service would buy
+nothing but a network hop and a deployment. The domain core is framework-free
+(`apps/web/src/lib/analysis/**` imports nothing from Next), so when a second consumer
+appears — a mobile client, a partner API — it lifts out into its own service without a
+rewrite. That is the cheap version of the option; paying for it now is not.
+
+The two things that genuinely do not belong in a request/response cycle are already
+separate processes: scheduled ingestion and alert delivery live in `services/worker`,
+and model inference lives in `services/ai-engine`.
 
 ### Where Python fits
 
-The spec calls for Python microservices for AI analysis. The seam for that is
-`FactorScorer` (§5): each scorer is an interface, and a scorer whose implementation is an
-HTTP call to a Python service satisfies it identically to a local one. Nothing else in the
-system needs to know. The factors that will plausibly move to Python are news and social
-sentiment (transformer inference); the deterministic ones — technical, risk — have no
-reason to leave TypeScript, since the math is a few hundred lines and running it in-process
-avoids a network round trip per asset.
+`services/ai-engine` is a FastAPI service with the scoring pipeline's seams defined
+and its models not yet written (see `docs/AI_ENGINE.md`). The seam on the TypeScript
+side is `FactorScorer` (§5): each scorer is an interface, and a scorer whose
+implementation is an HTTP call to the Python service satisfies it identically to a
+local one. Nothing else in the system needs to know which side a factor runs on.
+
+The factors that will move to Python are news and social sentiment, where the work is
+transformer inference and the ecosystem is decisively Python. The deterministic ones —
+technical, risk — have no reason to leave TypeScript: the math is a few hundred lines,
+and running it in-process avoids a network round trip per asset.
+
+The engine performs **no outbound provider calls of its own**. It scores the inputs it
+is handed. Rate limits, API keys and the circuit breaker stay in one place, and an
+engine that cannot fetch cannot invent.
 
 ## 3. Provider layer — the swap seam
 
-Requirement: *"the architecture should allow swapping data providers without rewriting the
-application."*
+Requirement: _"the architecture should allow swapping data providers without rewriting the
+application."_
 
 The mechanism is **capability-based routing**. A provider does not declare "I am Finnhub";
 it declares which capabilities it implements:
 
 ```ts
-type Capability = 'quote' | 'ohlcv' | 'fundamentals' | 'profile'
-               | 'news' | 'crypto.quote' | 'crypto.metrics' | 'search';
+type Capability =
+  | 'quote'
+  | 'ohlcv'
+  | 'fundamentals'
+  | 'profile'
+  | 'news'
+  | 'crypto.quote'
+  | 'crypto.metrics'
+  | 'search';
 
 interface Provider {
-  id: string;                          // 'finnhub'
+  id: string; // 'finnhub'
   capabilities: Capability[];
-  isConfigured(): boolean;             // are the required env keys present?
+  isConfigured(): boolean; // are the required env keys present?
   quote?(symbol: string): Promise<ProviderResult<Quote>>;
   // … one optional method per capability
 }
@@ -130,18 +147,18 @@ token bucket, keyed by provider id.
 
 Cache TTL is a function of how fast the underlying number actually changes:
 
-| Data | TTL | Rationale |
-|---|---|---|
-| Quote (crypto) | 15 s | 24/7 market, moves continuously |
-| Quote (equity) | 60 s | Free tiers are delayed 15 min anyway; sub-minute polling buys nothing |
-| OHLCV daily bars | 6 h | A daily bar is final once the session closes |
-| Fundamentals | 24 h | Changes quarterly |
-| News | 10 min | Headline latency tolerance |
-| Computed score | 5 min | Bounded by its fastest input |
+| Data             | TTL    | Rationale                                                             |
+| ---------------- | ------ | --------------------------------------------------------------------- |
+| Quote (crypto)   | 15 s   | 24/7 market, moves continuously                                       |
+| Quote (equity)   | 60 s   | Free tiers are delayed 15 min anyway; sub-minute polling buys nothing |
+| OHLCV daily bars | 6 h    | A daily bar is final once the session closes                          |
+| Fundamentals     | 24 h   | Changes quarterly                                                     |
+| News             | 10 min | Headline latency tolerance                                            |
+| Computed score   | 5 min  | Bounded by its fastest input                                          |
 
 Two-tier: an in-process LRU (survives a request, not a deploy) in front of Redis (shared
 across instances). In development Redis is optional — the in-process tier alone is correct,
-just colder. The cache stores `ProviderResult`, so a *failure* is cached briefly (30 s) as
+just colder. The cache stores `ProviderResult`, so a _failure_ is cached briefly (30 s) as
 well; this is deliberate, since a provider that is rate-limiting you will keep
 rate-limiting you, and hammering it makes the outage longer.
 
@@ -151,23 +168,23 @@ Six factors, each a `FactorScorer`:
 
 ```ts
 interface FactorScorer {
-  factor: Factor;                  // 'technical' | 'fundamental' | …
-  weight: number;                  // nominal weight, from the spec
+  factor: Factor; // 'technical' | 'fundamental' | …
+  weight: number; // nominal weight, from the spec
   score(ctx: AssetContext): Promise<FactorResult | Unavailable>;
 }
 
 interface FactorResult {
-  score: number;                   // 0–100
-  confidence: number;              // 0–1, how much evidence backed it
-  signals: Signal[];               // the citations
+  score: number; // 0–100
+  confidence: number; // 0–1, how much evidence backed it
+  signals: Signal[]; // the citations
 }
 
 interface Signal {
-  label: string;                   // 'RSI(14) oversold'
-  value: string;                   // '27.4'
+  label: string; // 'RSI(14) oversold'
+  value: string; // '27.4'
   direction: 'bullish' | 'bearish' | 'neutral';
-  weight: number;                  // contribution within the factor
-  source: string;                  // provider id — the audit trail
+  weight: number; // contribution within the factor
+  source: string; // provider id — the audit trail
 }
 ```
 
@@ -228,33 +245,84 @@ cross-market query wrong.
 
 ## 8. Repository layout
 
+An npm-workspaces monorepo. Four deployable units, three shared packages, one
+`npm install` at the root.
+
 ```
-src/
-  app/                      Next routes (UI + /api BFF)
-  components/               presentational; no data fetching, no provider imports
-  lib/
-    analysis/               PURE domain core — indicators, factor scorers, engine
-      indicators.ts         RSI, MACD, EMA/SMA, VWAP, ATR, Bollinger, ADX, Ichimoku…
-      factors/              one file per factor scorer
-      engine.ts             weighting, renormalization, banding
-    providers/              THE SWAP SEAM
-      types.ts              domain types + ProviderResult
-      registry.ts           capability routing, priority, fallthrough
-      equity/ crypto/ news/ adapters
-    http.ts                 timeout, retry w/ jitter, rate limit, circuit breaker
-    cache.ts                two-tier TTL cache
-    env.ts                  validated server config
-    logger.ts               structured JSON logs
-prisma/schema.prisma
-tests/                      unit tests for the domain core
-docs/
+atlas-markets-ai/
+├── apps/
+│   └── web/                    Next.js 15 — UI and BFF API routes
+│       ├── src/
+│       │   ├── app/            routes (pages + /api)
+│       │   ├── components/
+│       │   │   ├── ui/         Shadcn/UI, generated by its CLI
+│       │   │   ├── motion/     Framer Motion client wrappers
+│       │   │   └── primitives.tsx   hand-written Atlas surfaces
+│       │   └── lib/
+│       │       ├── analysis/   PURE domain core — indicators, factors, engine
+│       │       ├── providers/  THE SWAP SEAM — registry + adapters
+│       │       ├── http.ts     timeout, jittered retry, rate limit, breaker
+│       │       ├── cache.ts    two-tier TTL cache
+│       │       ├── env.ts      validated server config
+│       │       └── logger.ts   structured JSON logs, credential redaction
+│       └── tests/              unit tests for the domain core
+├── services/
+│   ├── worker/                 BullMQ consumers + repeatable schedules
+│   └── ai-engine/              Python 3.11 · FastAPI · scoring microservice
+├── packages/
+│   ├── core/                   cross-service contracts (queues, scoring wire types)
+│   ├── db/                     Prisma schema, migrations, client singleton
+│   └── config/                 shared tsconfig bases + Tailwind token preset
+├── infra/
+│   ├── docker-compose.yml      postgres · redis · full · observability profiles
+│   ├── docker/                 one Dockerfile per deployable
+│   └── monitoring/             Prometheus scrape config, Grafana provisioning
+└── docs/
 ```
 
-The dependency rule is one-directional and worth enforcing in review:
-`app → lib/analysis → lib/providers → lib/http`. `lib/analysis` must never import from
-`app`, and `components/` must never import from `lib/providers` — a component that can
-reach a provider is a component that will eventually fetch during render.
+### The dependency rule
 
-## 9. Delivery phases
+One-directional, and worth enforcing in review:
 
-See `docs/ROADMAP.md` for the full breakdown and current status.
+```
+app → lib/analysis → lib/providers → lib/http
+```
+
+`lib/analysis` must never import from `app`. `components/` must never import a
+provider adapter — a component that can reach a provider is a component that will
+eventually fetch during render, and adapters read API keys. That last rule is
+enforced by `no-restricted-imports` in `apps/web/eslint.config.mjs` rather than
+left to memory.
+
+Across packages the rule is that dependencies point _inward_:
+
+```
+apps/web  ─┐
+services/* ─┼─→ packages/core  (contracts only, no implementation)
+            └─→ packages/db    (persistence)
+```
+
+Nothing in `packages/` may import from `apps/` or `services/`. `packages/core`
+holds a type only if more than one process needs it: a shared package that
+accumulates implementation becomes the thing every service must redeploy
+together, which is the opposite of why it exists.
+
+### Why a monorepo rather than four repositories
+
+The contract between the BFF, the worker and the scoring engine changes on
+almost every feature. In separate repositories that is a version bump, a publish
+and three PRs to land one change — so in practice the contract stops being
+updated and the services drift. One repository makes a contract change a single
+atomic commit that fails the other services' typecheck immediately if it breaks
+them.
+
+## 9. Companion documents
+
+| Document                | Covers                                                            |
+| ----------------------- | ----------------------------------------------------------------- |
+| `docs/DATABASE.md`      | Data model, indexing, migration and retention strategy            |
+| `docs/API.md`           | Route inventory, status-code contract, error envelope, versioning |
+| `docs/AI_ENGINE.md`     | Scoring pipeline, factor plugin interface, refusal semantics      |
+| `docs/OBSERVABILITY.md` | Logging, metrics, tracing, the alerts that matter                 |
+| `docs/LOCAL_SETUP.md`   | Running the stack on Windows, macOS and Linux                     |
+| `docs/ROADMAP.md`       | Phase-by-phase plan and honest current status                     |

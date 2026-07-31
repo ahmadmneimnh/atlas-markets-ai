@@ -17,7 +17,7 @@ This is enforced structurally, not by convention:
   carry `source` and `asOf`, and the display components require them.
 - **Missing factors are dropped, not neutralised.** If fundamentals are unavailable
   the fundamental factor is removed from the denominator and the remaining weights
-  are renormalized — it is *not* scored 50/100. Scoring an unknown as "neutral"
+  are renormalized — it is _not_ scored 50/100. Scoring an unknown as "neutral"
   invents evidence and makes genuinely-average and completely-unknown assets
   indistinguishable.
 - **The engine refuses to answer when it does not know.** Below 25% factor coverage
@@ -28,9 +28,14 @@ This is enforced structurally, not by convention:
 
 ```bash
 npm install
-cp .env.example .env      # optional — see below
-npm run dev
+npm run dev               # → http://localhost:3000
 ```
+
+That is the whole setup. One `npm install` at the root installs every workspace and
+links them together — do not run it inside a subfolder.
+
+Full instructions, including Windows, Docker and the optional services:
+**[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
 
 **It runs with zero API keys.** Crypto is served by CoinGecko's public tier and
 Binance's public market-data endpoints, neither of which needs a credential. The
@@ -48,25 +53,36 @@ Postgres and Redis are optional for browsing (an in-process LRU stands in for
 Redis). They are required for watchlists, portfolios, alerts and score history:
 
 ```bash
-docker compose up -d postgres redis
+cp .env.example .env
+npm run infra:up          # postgres + redis in Docker
+npm run db:generate
 npm run db:push
 ```
 
 ## Verify it yourself
 
 ```bash
-npm test          # 70 unit tests
-npm run typecheck
-npm run build
-curl localhost:3000/api/health        # which providers are configured
+npm test                  # 70 unit tests across the workspaces
+npm run typecheck         # strict tsc --noEmit, four workspaces
+npm run lint
+npm run build             # production build
+curl localhost:3000/api/health              # which providers are configured
 curl localhost:3000/api/score/crypto/BTC
 ```
 
 `/api/health` reports provider configuration without ever returning a key value.
 
+The Python engine is verified separately:
+
+```bash
+cd services/ai-engine
+python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
+.venv/bin/python -m pytest        # 7 tests
+```
+
 ## How swapping a data provider works
 
-Call sites ask for a *capability*, never a vendor:
+Call sites ask for a _capability_, never a vendor:
 
 ```ts
 const quote = await market.quote('AAPL', 'equity');
@@ -81,21 +97,21 @@ ATLAS_PRIORITY_OHLCV=binance,coingecko
 ```
 
 Adding a vendor is one file implementing the `Provider` interface plus one entry in
-`src/lib/providers/registry.ts`. No call site changes, because no call site names a
-provider.
+`apps/web/src/lib/providers/registry.ts`. No call site changes, because no call site
+names a provider.
 
 ## Scoring
 
 Six factors, weighted per spec, renormalized across whichever are available:
 
-| Factor | Weight | Status |
-|---|---:|---|
-| Technical | 30% | ✅ RSI, MACD, SMA/EMA, VWAP, ATR, Bollinger, Ichimoku, ADX, momentum, volume, 52w range, golden/death cross |
-| Fundamental | 30% | ✅ Equities: P/E, PEG, growth, margin, ROE/ROIC, leverage, FCF. Crypto: rank, turnover, supply, dev activity |
-| News sentiment | 15% | ⚠️ Deterministic finance lexicon with negation handling and recency decay. Confidence capped at 0.6 — see below |
-| Social sentiment | 10% | ❌ Reports unavailable — needs Reddit / X / StockTwits credentials |
-| Macro | 10% | ❌ Reports unavailable — needs a FRED adapter |
-| Risk | 5% | ✅ Volatility, max drawdown, ATR%, range extension |
+| Factor           | Weight | Status                                                                                                          |
+| ---------------- | -----: | --------------------------------------------------------------------------------------------------------------- |
+| Technical        |    30% | ✅ RSI, MACD, SMA/EMA, VWAP, ATR, Bollinger, Ichimoku, ADX, momentum, volume, 52w range, golden/death cross     |
+| Fundamental      |    30% | ✅ Equities: P/E, PEG, growth, margin, ROE/ROIC, leverage, FCF. Crypto: rank, turnover, supply, dev activity    |
+| News sentiment   |    15% | ⚠️ Deterministic finance lexicon with negation handling and recency decay. Confidence capped at 0.6 — see below |
+| Social sentiment |    10% | ❌ Reports unavailable — needs Reddit / X / StockTwits credentials                                              |
+| Macro            |    10% | ❌ Reports unavailable — needs a FRED adapter                                                                   |
+| Risk             |     5% | ✅ Volatility, max drawdown, ATR%, range extension                                                              |
 
 Bands: 0–30 Strong Sell · 31–45 Sell · 46–55 Hold · 56–70 Buy · 71–100 Strong Buy.
 
@@ -114,33 +130,50 @@ It is a weighted lexicon, not a language model. That is transparent (every
 classification traces to matched terms) and free, but plainly weaker than a
 transformer on negation and context. Its confidence is therefore capped at 0.6 so it
 never speaks with authority it has not earned. `classify()` in
-`src/lib/analysis/factors/news.ts` is the only function that inspects text — the
-swap point for a model-backed service.
+`apps/web/src/lib/analysis/factors/news.ts` is the only function that inspects text —
+the swap point for the Python service in `services/ai-engine`.
 
 ## Architecture
 
-Full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); delivery status in
-[docs/ROADMAP.md](docs/ROADMAP.md).
+An npm-workspaces monorepo. Four deployable units, three shared packages.
 
 ```
-src/
-  app/                Next 15 routes (UI + BFF API)
-  components/         presentational only; never import lib/providers
-  lib/
-    analysis/         PURE domain core — indicators, factor scorers, engine
-    providers/        THE SWAP SEAM — capability-routed adapters
-    http.ts           timeout · jittered retry · per-provider rate limit · circuit breaker
-    cache.ts          two-tier TTL cache (failures cached briefly too)
-prisma/schema.prisma  users, assets, score history, watchlists, portfolios, alerts
-tests/                70 unit tests
+apps/web/                 Next.js 15 — UI + BFF API routes
+  src/app/                routes (pages + /api)
+  src/components/         ui/ (Shadcn) · motion/ (Framer) · primitives.tsx
+  src/lib/analysis/       PURE domain core — indicators, factor scorers, engine
+  src/lib/providers/      THE SWAP SEAM — capability-routed adapters
+  src/lib/http.ts         timeout · jittered retry · rate limit · circuit breaker
+  src/lib/cache.ts        two-tier TTL cache (failures cached briefly too)
+  tests/                  70 unit tests
+services/worker/          BullMQ consumers + repeatable schedules
+services/ai-engine/       Python 3.11 · FastAPI · scoring microservice
+packages/core/            cross-service contracts (queues, scoring wire types)
+packages/db/              Prisma schema, migrations, client singleton
+packages/config/          shared tsconfig bases + Tailwind token preset
+infra/                    compose profiles, Dockerfiles, Prometheus, Grafana
+docs/                     architecture · database · API · AI engine · setup · roadmap
 ```
 
 Dependency rule: `app → lib/analysis → lib/providers → lib/http`. `lib/analysis`
-never imports from `app`; `components/` never imports from `lib/providers`.
+never imports from `app`; components never import a provider adapter — enforced by
+`no-restricted-imports` in `apps/web/eslint.config.mjs`, not left to memory. Across
+packages, dependencies point inward: nothing in `packages/` imports from `apps/` or
+`services/`.
+
+| Document                                  | Covers                                                   |
+| ----------------------------------------- | -------------------------------------------------------- |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)   | System shape, provider seam, caching, security           |
+| [DATABASE.md](docs/DATABASE.md)           | Data model, indexing, migrations, retention              |
+| [API.md](docs/API.md)                     | Routes, status-code contract, error envelope, versioning |
+| [AI_ENGINE.md](docs/AI_ENGINE.md)         | Scoring pipeline, factor plugins, refusal semantics      |
+| [OBSERVABILITY.md](docs/OBSERVABILITY.md) | Logging, metrics, tracing, alerting                      |
+| [LOCAL_SETUP.md](docs/LOCAL_SETUP.md)     | Running it on Windows, macOS, Linux                      |
+| [ROADMAP.md](docs/ROADMAP.md)             | Phase-by-phase plan and honest status                    |
 
 ## Security
 
-- API keys are server-only via `src/lib/env.ts` and never reach a client bundle
+- API keys are server-only via `apps/web/src/lib/env.ts` and never reach a client bundle
   (enforced by the `server-only` import guard).
 - **Credentials are stripped from URLs before logging.** Most vendors authenticate by
   query parameter, so an innocuous-looking `url` log field would otherwise carry a
@@ -151,8 +184,17 @@ never imports from `app`; `components/` never imports from `lib/providers`.
 
 ## Status
 
-Phases 1, 3, 4, 5, 6 are built and tested. Authentication, portfolios, watchlists,
-alerts and the admin write-path are modelled in the Prisma schema but not wired up —
-those pages say so explicitly rather than rendering an empty shell. See the roadmap.
+**Phase 1 (architecture) is complete.** Phases 3–6 are built and tested. Authentication,
+portfolios, watchlists, alerts and the admin write-path are modelled in the Prisma
+schema but not wired up — those pages say so explicitly rather than rendering an
+empty shell.
+
+The worker and the Python engine ship their pipelines, contracts and refusals, not
+their bodies: unimplemented job handlers fail with "not implemented until Phase N",
+and `POST /v1/score` answers `501`. A handler that returned success without doing
+work would give a green dashboard for a system doing nothing, and a placeholder score
+is indistinguishable from a real recommendation to everything downstream.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full breakdown.
 
 **Not investment advice.** Algorithmic scores from public data, for research only.

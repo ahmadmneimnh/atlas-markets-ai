@@ -1,0 +1,128 @@
+# Atlas Markets AI — local infrastructure.
+#
+# Profiles, because "start the database" and "start everything in containers" are
+# different tasks with different iteration speeds:
+#
+#   npm run infra:up    → postgres + redis only. The normal development loop:
+#                         app and worker run on the host with hot reload.
+#   npm run stack:up    → profile `full`. Every service containerised, closest to
+#                         production, rebuilt on change.
+#   --profile observability → Prometheus + Grafana.
+#
+# Build contexts are the repository root: the workspace packages live outside
+# apps/web, and a context scoped to the app directory cannot see them.
+
+name: atlas-markets-ai
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: atlas-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas}
+      POSTGRES_DB: ${POSTGRES_DB:-atlas}
+    ports: ['${POSTGRES_PORT:-5432}:5432']
+    volumes: ['atlas-pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-atlas}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis
+    # BullMQ jobs are durable work, not a cache. `appendonly` means a container
+    # restart does not silently drop every queued job.
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['${REDIS_PORT:-6379}:6379']
+    volumes: ['atlas-redisdata:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    profiles: ['full']
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.web
+    container_name: atlas-web
+    env_file: [../.env]
+    environment:
+      # Service names, not localhost: inside the compose network `localhost` is
+      # the container itself.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}
+      REDIS_URL: redis://redis:6379
+      AI_ENGINE_URL: http://ai-engine:8000
+    ports: ['${WEB_PORT:-3000}:3000']
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    profiles: ['full']
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.worker
+    container_name: atlas-worker
+    env_file: [../.env]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}
+      REDIS_URL: redis://redis:6379
+      AI_ENGINE_URL: http://ai-engine:8000
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # SIGTERM must reach the Node process for graceful shutdown to run; the
+    # default 10s is not enough for in-flight provider calls to drain.
+    stop_grace_period: 40s
+
+  ai-engine:
+    profiles: ['full']
+    build:
+      context: ../services/ai-engine
+      dockerfile: ../../infra/docker/Dockerfile.ai-engine
+    container_name: atlas-ai-engine
+    env_file: [../.env]
+    ports: ['${AI_ENGINE_PORT:-8000}:8000']
+    healthcheck:
+      # /health, not /ready: readiness is 503 until Phase 4 registers factor
+      # models, and depending on it would block the whole stack from starting.
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    profiles: ['observability']
+    image: prom/prometheus:v3.1.0
+    container_name: atlas-prometheus
+    volumes: ['./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro']
+    ports: ['9090:9090']
+
+  grafana:
+    profiles: ['observability']
+    image: grafana/grafana:11.4.0
+    container_name: atlas-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-atlas}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - './monitoring/grafana/provisioning:/etc/grafana/provisioning:ro'
+      - 'atlas-grafana:/var/lib/grafana'
+    ports: ['3001:3000']
+    depends_on: [prometheus]
+
+volumes:
+  atlas-pgdata:
+  atlas-redisdata:
+  atlas-grafana:

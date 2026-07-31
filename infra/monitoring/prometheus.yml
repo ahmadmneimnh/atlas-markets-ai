@@ -1,0 +1,34 @@
+# Scrape configuration for the local observability profile.
+#
+#   docker compose -f infra/docker-compose.yml --profile observability up
+#
+# Targets are compose service names, resolved on the compose network. Running
+# Prometheus on the host instead requires host.docker.internal.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local
+
+scrape_configs:
+  - job_name: ai-engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ai-engine:8000']
+        labels: { service: ai-engine }
+
+  # Phase 10 wires these. The exporters are named here so the intended metric
+  # surface is explicit rather than something to rediscover later:
+  #
+  #   web     — Next.js route timings and provider call outcomes via an OTel
+  #             collector; Next has no built-in /metrics endpoint.
+  #   worker  — BullMQ queue depth, job durations, failure counts. Queue depth is
+  #             the single most useful alert signal in the system: it rises before
+  #             users notice anything.
+  #
+  # - job_name: web
+  #   static_configs: [{ targets: ['web:3000'] }]
+  #
+  # - job_name: worker
+  #   static_configs: [{ targets: ['worker:9464'] }]

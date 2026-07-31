@@ -1,0 +1,38 @@
+# Atlas Markets AI — BullMQ worker.
+#
+# Runs TypeScript through tsx rather than compiling to JavaScript. The worker is
+# a long-lived process with no cold-start budget, and skipping the build step
+# means stack traces point at the file you would edit. Revisit if startup time
+# ever matters.
+
+FROM node:22-alpine AS deps
+WORKDIR /repo
+COPY package.json package-lock.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/config/package.json ./packages/config/
+COPY packages/core/package.json ./packages/core/
+COPY packages/db/package.json ./packages/db/
+COPY services/worker/package.json ./services/worker/
+RUN npm ci
+
+FROM node:22-alpine AS runner
+WORKDIR /repo
+ENV NODE_ENV=production
+
+RUN addgroup -g 1001 -S nodejs && adduser -S worker -u 1001
+
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --chown=worker:nodejs package.json ./
+COPY --chown=worker:nodejs packages ./packages
+COPY --chown=worker:nodejs services/worker ./services/worker
+
+RUN npx prisma generate --schema packages/db/prisma/schema.prisma
+
+# tini reaps zombies and, more importantly here, forwards SIGTERM. As PID 1 a
+# bare Node process receives no default signal handling, so `docker stop` would
+# hit the 40s grace period and SIGKILL — skipping graceful shutdown entirely and
+# leaving in-flight jobs locked until BullMQ's stall timeout.
+RUN apk add --no-cache tini
+USER worker
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["npx", "tsx", "services/worker/src/index.ts"]

@@ -1,0 +1,19 @@
+{
+  "name": "@atlas/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared build configuration: TypeScript bases and the Tailwind design-token preset",
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.node.json",
+    "tailwind.preset.cjs"
+  ],
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./tsconfig.node.json": "./tsconfig.node.json",
+    "./tailwind.preset": "./tailwind.preset.cjs"
+  },
+  "dependencies": {
+    "tailwindcss-animate": "^1.0.7"
+  }
+}

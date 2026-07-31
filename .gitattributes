@@ -1,0 +1,6 @@
+# Normalise line endings. Without this, a Windows checkout rewrites every file to
+# CRLF and the Alpine containers refuse to execute shell scripts that came from it.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

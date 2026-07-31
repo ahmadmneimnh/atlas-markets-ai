@@ -18,8 +18,14 @@ import { unavailable } from './types';
 
 import { finnhub } from './equity/finnhub';
 import { alphavantage } from './equity/alphavantage';
+import { polygon } from './equity/polygon';
+import { twelvedata } from './equity/twelvedata';
+import { fmp } from './equity/fmp';
+import { yahoo } from './equity/yahoo';
 import { coingecko } from './crypto/coingecko';
 import { binance } from './crypto/binance';
+import { coinmarketcap } from './crypto/coinmarketcap';
+import { coinbase } from './crypto/coinbase';
 
 /**
  * Capability-routed provider registry.
@@ -30,21 +36,48 @@ import { binance } from './crypto/binance';
  * nothing else in the application.
  */
 
-const ALL: Provider[] = [finnhub, alphavantage, coingecko, binance];
+const ALL: Provider[] = [
+  finnhub,
+  polygon,
+  twelvedata,
+  fmp,
+  alphavantage,
+  yahoo,
+  binance,
+  coinbase,
+  coingecko,
+  coinmarketcap,
+];
 
 /**
  * Default ordering per capability, best-first. Overridable per deployment via
  * ATLAS_PRIORITY_* env vars — that override is the documented swap mechanism.
  */
+/**
+ * Ordering rationale, since "best-first" is doing real work here:
+ *
+ *  - **Finnhub leads the equity capabilities.** 60 req/min on the free tier is an
+ *    order of magnitude more headroom than Polygon's 5 or Alpha Vantage's 25/day.
+ *  - **Yahoo is last everywhere it appears.** It is an undocumented endpoint with
+ *    no contract and no support (see its adapter); a useful gap-filler, never the
+ *    primary source for a number a user acts on.
+ *  - **Alpha Vantage is deliberately near-last for OHLCV.** 25 requests per *day*
+ *    means putting it earlier would exhaust it during a single screener load and
+ *    leave nothing for the case it exists to cover.
+ *  - **Binance leads crypto quotes, Coinbase second.** Binance has the deeper book
+ *    on most pairs; Coinbase prices in real USD rather than USDT, so it is the
+ *    better answer whenever the peg is under stress — exactly when the fallthrough
+ *    is most likely to be exercised.
+ */
 const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
-  quote: ['finnhub'],
-  ohlcv: ['binance', 'alphavantage', 'coingecko'],
-  fundamentals: ['finnhub', 'alphavantage'],
-  profile: ['finnhub'],
-  news: ['finnhub'],
-  'crypto.quote': ['binance', 'coingecko'],
-  'crypto.metrics': ['coingecko'],
-  search: ['finnhub', 'coingecko'],
+  quote: ['finnhub', 'twelvedata', 'fmp', 'polygon', 'yahoo'],
+  ohlcv: ['binance', 'coinbase', 'twelvedata', 'polygon', 'alphavantage', 'coingecko', 'yahoo'],
+  fundamentals: ['fmp', 'finnhub', 'alphavantage'],
+  profile: ['finnhub', 'fmp', 'polygon'],
+  news: ['finnhub', 'fmp'],
+  'crypto.quote': ['binance', 'coinbase', 'coingecko', 'coinmarketcap'],
+  'crypto.metrics': ['coingecko', 'coinmarketcap'],
+  search: ['finnhub', 'twelvedata', 'coingecko', 'coinmarketcap', 'polygon', 'yahoo'],
 };
 
 function envOverride(cap: Capability): string[] {

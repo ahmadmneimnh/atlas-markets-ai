@@ -68,8 +68,10 @@ export function configuredProviders(): Record<string, boolean> {
     fmp: Boolean(env.providers.fmp),
     polygon: Boolean(env.providers.polygon),
     coingecko: true, // public tier works without a key
+    yahoo: true, // unauthenticated, and undocumented — see the adapter
     coinmarketcap: Boolean(env.providers.coinMarketCap),
     binance: true, // public market data endpoints are unauthenticated
+    coinbase: true, // public market data endpoints are unauthenticated
     newsapi: Boolean(env.providers.newsApi),
   };
 }

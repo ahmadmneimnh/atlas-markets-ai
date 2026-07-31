@@ -10,8 +10,62 @@
  *     UI without knowing where it came from is a bug the type system catches.
  */
 
+/**
+ * Listing venues. Mirrors the `Market` enum in the Prisma schema — the two are
+ * kept in step by hand, and the seed asserts they agree.
+ */
 export type Market =
-  'NYSE' | 'NASDAQ' | 'LSE' | 'FRA' | 'EURONEXT' | 'HKEX' | 'TSE' | 'ASX' | 'TSX' | 'CRYPTO';
+  | 'NYSE'
+  | 'NASDAQ'
+  | 'AMEX'
+  | 'LSE'
+  | 'FRA'
+  | 'XETRA'
+  | 'EURONEXT'
+  | 'SIX'
+  | 'HKEX'
+  | 'TSE'
+  | 'SSE'
+  | 'SZSE'
+  | 'NSE'
+  | 'BSE'
+  | 'ASX'
+  | 'TSX'
+  | 'TSXV'
+  | 'BVMF'
+  | 'JSE'
+  | 'CRYPTO';
+
+/**
+ * Vendor symbol suffixes per venue.
+ *
+ * Non-US listings are not addressable by bare ticker: Yahoo and TwelveData want
+ * `BP.L`, FMP wants `BP.L` too, Finnhub wants `BP.LON`. A call site that writes
+ * the suffix itself has silently bound a query to one vendor, which is exactly
+ * what the registry exists to prevent — so the mapping lives with each adapter.
+ */
+export const MARKET_SUFFIX: Record<Market, string> = {
+  NYSE: '',
+  NASDAQ: '',
+  AMEX: '',
+  LSE: '.L',
+  FRA: '.F',
+  XETRA: '.DE',
+  EURONEXT: '.PA',
+  SIX: '.SW',
+  HKEX: '.HK',
+  TSE: '.T',
+  SSE: '.SS',
+  SZSE: '.SZ',
+  NSE: '.NS',
+  BSE: '.BO',
+  ASX: '.AX',
+  TSX: '.TO',
+  TSXV: '.V',
+  BVMF: '.SA',
+  JSE: '.JO',
+  CRYPTO: '',
+};
 
 export type AssetKind = 'equity' | 'crypto';
 

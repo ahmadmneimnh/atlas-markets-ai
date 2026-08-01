@@ -18,10 +18,19 @@ export function AiAnalysis({
   children,
   factorCount,
   omittedCount,
+  showLabel = 'Show AI Analysis',
+  hideLabel = 'Hide AI Analysis',
 }: {
   children: React.ReactNode;
   factorCount: number;
   omittedCount: number;
+  /**
+   * Full button text per state, rather than a title the component prefixes with
+   * a verb — the label is sometimes a question ("Why is AI recommending this?"),
+   * and "Show Why is AI recommending this?" is not a sentence.
+   */
+  showLabel?: string;
+  hideLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -37,7 +46,7 @@ export function AiAnalysis({
       >
         <span>
           <span className="block text-sm font-semibold text-ink">
-            {open ? 'Hide AI Analysis' : 'Show AI Analysis'}
+            {open ? hideLabel : showLabel}
           </span>
           <span className="mt-0.5 block text-xs text-ink-faint">
             {factorCount} factor{factorCount === 1 ? '' : 's'} scored

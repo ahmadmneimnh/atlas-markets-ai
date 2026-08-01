@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation';
-import { detail, getScore } from '@/lib/service';
+import { detail, getPlan, getScore } from '@/lib/service';
 import { market } from '@/lib/providers/registry';
 import { findAsset } from '@/lib/universe';
-import { ScoreExplanation } from '@/components/score-card';
 import { RiskPanel } from '@/components/risk-panel';
 import { AssetHeader } from '@/components/detail/asset-header';
 import { AiAnalysis } from '@/components/detail/ai-analysis';
+import { DecisionPanel, DecisionUnavailable } from '@/components/detail/decision-panel';
+import { WhyPanel } from '@/components/detail/why-panel';
 import { NewsSummaryPanel } from '@/components/detail/news-summary';
 import { buildNewsSummary } from '@/lib/analysis/news-summary';
 import {
@@ -50,9 +51,12 @@ export default async function AssetPage({
     market: kind === 'crypto' ? 'CRYPTO' : 'NASDAQ',
   };
 
-  // Score, profile and news are independent; fetch concurrently.
-  const [outcome, profile, news] = await Promise.all([
+  // Score, plan, profile and news are independent; fetch concurrently. `getPlan`
+  // internally awaits the same cached score, so this costs a cache read rather
+  // than a second scoring pass.
+  const [outcome, plan, profile, news] = await Promise.all([
     getScore(ref),
+    getPlan(ref),
     kind === 'equity' ? market.profile(symbol) : Promise.resolve(null),
     market.news(symbol, 8),
   ]);
@@ -140,17 +144,33 @@ export default async function AssetPage({
       )}
 
       {/*
-        Everything explaining the number is collapsed behind one click. The
+        The decision itself: what to do, at what price, where to take profit,
+        where to exit if wrong. Always visible, directly under the header — these
+        are the numbers a reader came for, and putting them behind a disclosure
+        would leave the page answering "how good is this asset" instead of "what
+        do I do about it".
+      */}
+      {plan.ok ? (
+        <DecisionPanel plan={plan.plan} />
+      ) : (
+        <DecisionUnavailable message={plan.message} missing={plan.missing} />
+      )}
+
+      {/*
+        Everything explaining the decision is collapsed behind one click. The
         breakdown has not been removed or thinned — it is the same six-factor
-        explanation with the same citations, just no longer the first thing
-        between a reader and their decision.
+        explanation with the same citations, regrouped under the four headings a
+        reader actually asks about, and no longer the first thing between them
+        and their decision.
       */}
       {outcome.ok ? (
         <AiAnalysis
           factorCount={outcome.score.breakdown.length}
           omittedCount={outcome.score.omitted.length}
+          showLabel="Why is AI recommending this?"
+          hideLabel="Hide explanation"
         >
-          <ScoreExplanation score={outcome.score} />
+          <WhyPanel score={outcome.score} {...(plan.ok ? { plan: plan.plan } : {})} />
           <RiskPanel risk={outcome.score.risk} />
 
           <section>

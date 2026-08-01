@@ -4,6 +4,12 @@ import { finnhubExtras } from '@/lib/providers/equity/finnhub';
 import { defillama } from '@/lib/providers/crypto/defillama';
 import { cached, cacheKey, TTL } from './cache';
 import { scoreAsset, InsufficientDataError } from './analysis/engine';
+import {
+  INSUFFICIENT_DATA_MESSAGE,
+  buildTradePlan,
+  type AnalystTarget,
+  type PlanOutcome,
+} from './analysis/decision';
 import type { AssetContext, AssetScore } from './analysis/types';
 import type { AssetRef, Quote, ProviderResult } from './providers/types';
 import { log } from './logger';
@@ -124,6 +130,61 @@ export async function scoreMany(
     out.push(...settled);
   }
   return out;
+}
+
+export type { PlanOutcome, TradePlan } from './analysis/decision';
+
+/**
+ * The investment decision: entry, target and stop for one asset.
+ *
+ * Separate from `getScore` rather than folded into it, for one reason that is
+ * about cost rather than tidiness. The plan wants sell-side price targets, and
+ * that is an extra provider call per asset. `getScore` is what the market scanner
+ * runs across the whole universe — adding a target lookup there would multiply
+ * one page load into fifty analyst-target requests and exhaust an FMP free tier
+ * in a single visit. The detail page asks for a plan; the scanner never does.
+ *
+ * `buildContext` runs again here, but every call inside it is served by the
+ * registry's own cache (daily bars are held for six hours), so a plan requested
+ * alongside a score costs cache reads, not round trips.
+ */
+export async function getPlan(ref: AssetRef): Promise<PlanOutcome> {
+  return cached(
+    cacheKey('plan', ref.kind, ref.symbol),
+    TTL.score,
+    async () => {
+      const [ctx, outcome] = await Promise.all([buildContext(ref), getScore(ref)]);
+
+      // No score, no plan. Levels without a recommendation to act on would be
+      // four numbers with nothing tying them to a decision.
+      if (!outcome.ok) {
+        return {
+          ok: false,
+          message: INSUFFICIENT_DATA_MESSAGE,
+          missing: [outcome.message],
+        } satisfies PlanOutcome;
+      }
+
+      let analyst: AnalystTarget | undefined;
+      if (ref.kind === 'equity') {
+        const target = await fmpExtras.priceTarget(ref.symbol);
+        if (target.ok) {
+          analyst = { source: 'fmp' };
+          // Each field is copied only when the provider actually sent it —
+          // spreading the payload would turn an absent consensus into `undefined`
+          // that later reads as "no opinion" rather than "never asked".
+          if (target.data.targetConsensus !== undefined) {
+            analyst.consensus = target.data.targetConsensus;
+          }
+          if (target.data.targetHigh !== undefined) analyst.high = target.data.targetHigh;
+          if (target.data.targetLow !== undefined) analyst.low = target.data.targetLow;
+        }
+      }
+
+      return buildTradePlan(ctx, outcome.score, analyst);
+    },
+    (value) => (value.ok ? TTL.score : TTL.failure),
+  );
 }
 
 /**

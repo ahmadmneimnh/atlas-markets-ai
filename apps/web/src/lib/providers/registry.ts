@@ -11,6 +11,8 @@ import type {
   CompanyProfile,
   NewsArticle,
   CryptoMetrics,
+  Filing,
+  AnalystEstimates,
   SearchHit,
   Unavailable,
   EarningsEvent,
@@ -25,11 +27,13 @@ import { polygon } from './equity/polygon';
 import { twelvedata } from './equity/twelvedata';
 import { fmp } from './equity/fmp';
 import { yahoo } from './equity/yahoo';
+import { sec } from './equity/sec';
 import { coingecko } from './crypto/coingecko';
 import { binance } from './crypto/binance';
 import { coinmarketcap } from './crypto/coinmarketcap';
 import { coinbase } from './crypto/coinbase';
 import { alternativeme } from './sentiment/alternativeme';
+import { newsapi } from './news/newsapi';
 
 /**
  * Capability-routed provider registry.
@@ -52,6 +56,8 @@ const ALL: Provider[] = [
   coingecko,
   coinmarketcap,
   alternativeme,
+  newsapi,
+  sec,
 ];
 
 /**
@@ -79,13 +85,17 @@ const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
   ohlcv: ['binance', 'coinbase', 'twelvedata', 'polygon', 'alphavantage', 'coingecko', 'yahoo'],
   fundamentals: ['fmp', 'finnhub', 'alphavantage'],
   profile: ['finnhub', 'fmp', 'polygon'],
-  news: ['finnhub', 'fmp'],
+  // NewsAPI last: the others return vendor-tagged company news, while NewsAPI
+  // returns keyword hits. See its adapter for why that ordering is not cosmetic.
+  news: ['finnhub', 'fmp', 'newsapi'],
   'crypto.quote': ['binance', 'coinbase', 'coingecko', 'coinmarketcap'],
   'crypto.metrics': ['coingecko', 'coinmarketcap'],
   search: ['finnhub', 'twelvedata', 'coingecko', 'coinmarketcap', 'polygon', 'yahoo'],
   earnings: ['finnhub'],
   'economic.calendar': ['finnhub'],
   'fear.greed': ['alternativeme'],
+  filings: ['sec'],
+  analyst: ['fmp'],
 };
 
 function envOverride(cap: Capability): string[] {
@@ -218,6 +228,30 @@ export const market = {
       cacheKey('cryptometrics', symbol),
       TTL.fundamentals,
       () => resolve<CryptoMetrics>('crypto.metrics', (p) => p.cryptoMetrics?.(symbol)),
+      resultTtl(TTL.fundamentals),
+    );
+  },
+
+  async analystEstimates(symbol: string): Promise<ProviderResult<AnalystEstimates>> {
+    return cached(
+      cacheKey('analyst', symbol),
+      // Deliberately the fundamentals TTL, not the score TTL. Sell-side targets
+      // move when an analyst publishes, which is a handful of times a quarter —
+      // and this now runs for every asset the scanner scores, so a short TTL
+      // would spend a day's FMP quota on one page load.
+      TTL.fundamentals,
+      () => resolve<AnalystEstimates>('analyst', (p) => p.analystEstimates?.(symbol)),
+      resultTtl(TTL.fundamentals),
+    );
+  },
+
+  async filings(symbol: string, limit = 10): Promise<ProviderResult<Filing[]>> {
+    return cached(
+      cacheKey('filings', symbol, limit),
+      // Filings are immutable once submitted and arrive a few times a quarter,
+      // so this matches the fundamentals cadence rather than the quote cadence.
+      TTL.fundamentals,
+      () => resolve<Filing[]>('filings', (p) => p.filings?.(symbol, limit)),
       resultTtl(TTL.fundamentals),
     );
   },

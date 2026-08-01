@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { runScanner } from '@/lib/service';
+import { runDailyScan, runScanner } from '@/lib/service';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +25,25 @@ export async function GET(request: Request): Promise<NextResponse> {
   const kind = kindParam === 'equity' || kindParam === 'crypto' ? kindParam : 'all';
   const limit = Math.min(Math.max(Number(params.get('limit') ?? 5), 1), 25);
 
+  // ?mode=daily returns the complete ranking, stable for the UTC day. The
+  // default stays the live top-N so an existing caller sees no change.
+  if (params.get('mode') === 'daily') {
+    const { result, scanDate } = await runDailyScan(kind);
+    return NextResponse.json({
+      mode: 'daily',
+      scanDate,
+      scannedAt: result.scannedAt.toISOString(),
+      coverage: result.coverage,
+      confidenceFloor: 45,
+      // Strongest buy first, strongest sell last, nothing filtered out.
+      ranked: result.ranked,
+    });
+  }
+
   const result = await runScanner(kind, limit);
 
   return NextResponse.json({
+    mode: 'live',
     scannedAt: result.scannedAt.toISOString(),
     // Stated up front so a caller can judge the lists: 3 of 30 scored is a very
     // different answer from 30 of 30, and both are legitimate.

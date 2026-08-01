@@ -133,14 +133,6 @@ export interface PlanUnavailable {
 
 export type PlanOutcome = { ok: true; plan: TradePlan } | PlanUnavailable;
 
-/** Sell-side consensus, when a provider exposes it. Equities only in practice. */
-export interface AnalystTarget {
-  consensus?: number;
-  high?: number;
-  low?: number;
-  source: string;
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
 const num = (n: number): string =>
@@ -191,11 +183,12 @@ interface Candidate {
  * network, and the module cannot reach for a provider that would let it invent a
  * level the caller never saw.
  */
-export function buildTradePlan(
-  ctx: AssetContext,
-  score: AssetScore,
-  analyst?: AnalystTarget,
-): PlanOutcome {
+export function buildTradePlan(ctx: AssetContext, score: AssetScore): PlanOutcome {
+  // Read from the context rather than taken as a parameter: the plan must be
+  // built from exactly the evidence the score saw. A separate argument would let
+  // a caller hand the target selector an analyst target the fundamental factor
+  // never scored, and the two would disagree on the same page.
+  const analyst = ctx.analyst;
   const missing: string[] = [];
 
   const series = ctx.ohlcv;
@@ -454,9 +447,9 @@ export function buildTradePlan(
     }
   }
 
-  if (analyst?.consensus !== undefined && ahead(analyst.consensus)) {
+  if (analyst?.targetConsensus !== undefined && ahead(analyst.targetConsensus)) {
     observed.push({
-      price: analyst.consensus,
+      price: analyst.targetConsensus,
       label: 'Analyst consensus target',
       source: analyst.source,
     });
@@ -536,7 +529,7 @@ export function buildTradePlan(
     inputs: candidates.map((c) => ({ label: c.label, value: num(c.price), source: c.source })),
   };
 
-  if (analyst?.consensus === undefined) {
+  if (analyst?.targetConsensus === undefined) {
     missing.push('analyst price targets — no sell-side consensus was available for this asset');
   }
 

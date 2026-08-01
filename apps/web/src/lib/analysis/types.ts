@@ -1,4 +1,5 @@
 import type {
+  AnalystEstimates,
   AssetRef,
   Quote,
   OhlcvSeries,
@@ -24,6 +25,15 @@ export interface Signal {
   weight: number;
   /** Provider id the underlying datum came from. */
   source: string;
+  /**
+   * Which factor produced this signal.
+   *
+   * Optional because a scorer does not set it — it already knows, and requiring
+   * every scorer to stamp its own name on every signal is a rule that gets
+   * forgotten. The engine fills it in when flattening the breakdown, so any
+   * signal that has travelled outside its `FactorResult` carries its origin.
+   */
+  factor?: Factor;
 }
 
 export interface FactorResult {
@@ -54,6 +64,12 @@ export interface AssetContext {
   fundamentals?: Fundamentals;
   cryptoMetrics?: CryptoMetrics;
   news?: NewsArticle[];
+  /**
+   * Sell-side estimates. Equities only in practice, and absent whenever no
+   * provider serves the `analyst` capability — the fundamental factor drops its
+   * analyst contributions rather than assuming a neutral consensus.
+   */
+  analyst?: AnalystEstimates;
 }
 
 export interface FactorScorer {

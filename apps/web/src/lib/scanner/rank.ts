@@ -1,3 +1,4 @@
+import type { TradePlan } from '@/lib/analysis/decision';
 import type { AssetScore, Recommendation, Signal } from '@/lib/analysis/types';
 import type { Quote } from '@/lib/providers/types';
 
@@ -27,6 +28,7 @@ export interface ScannerInput {
   name: string;
   score: AssetScore;
   quote?: Quote;
+  plan?: TradePlan;
 }
 
 export interface Opportunity {
@@ -39,6 +41,19 @@ export interface Opportunity {
   price?: number;
   changePercent?: number;
   currency?: string;
+  /** Target from the decision module, when levels could be derived. */
+  target?: number;
+  /**
+   * Move from the current price to the target, as a percentage.
+   *
+   * Signed rather than split into separate upside/downside fields: a sell's
+   * target is below spot and the negative number is the answer. Present only
+   * when both a price and a target exist — deriving it from one of them would
+   * mean inventing the other.
+   */
+  potentialPercent?: number;
+  /** Risk level from the plan, which takes it from the score's risk assessment. */
+  riskLevel?: 'low' | 'medium' | 'high';
   /** The highest-impact signals behind this score. Never empty for a ranked entry. */
   citations: Signal[];
   /** Distinct provider ids that contributed. */
@@ -53,6 +68,16 @@ export interface ScannerResult {
   hold: Opportunity[];
   /** SELL and STRONG_SELL, worst first: the strongest sell signal leads. */
   sell: Opportunity[];
+  /**
+   * Every scored asset in one ordering, strongest buy first and strongest sell
+   * last.
+   *
+   * Not truncated by `limit`, and not filtered by the confidence floor — this is
+   * the complete ranking, and an asset held back from the actionable lists still
+   * has a place in it with its confidence shown. Omitting those rows would make
+   * the list look like the whole universe while quietly being a subset.
+   */
+  ranked: Opportunity[];
   /** Everything grouped by band, for a complete view. */
   byBand: Record<Recommendation, Opportunity[]>;
   /**
@@ -77,7 +102,7 @@ export const ACTIONABLE_CONFIDENCE = 45;
 const BANDS: Recommendation[] = ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'];
 
 function toOpportunity(input: ScannerInput): Opportunity {
-  const { score, quote } = input;
+  const { score, quote, plan } = input;
 
   const opportunity: Opportunity = {
     name: input.name,
@@ -95,6 +120,19 @@ function toOpportunity(input: ScannerInput): Opportunity {
     opportunity.price = quote.price;
     opportunity.changePercent = quote.changePercent;
     if (quote.currency) opportunity.currency = quote.currency;
+  }
+
+  if (plan) {
+    opportunity.target = plan.target.price;
+    opportunity.riskLevel = plan.riskLevel;
+    // Measured against the plan's own current price, not the quote's. They are
+    // normally the same value, but the plan falls back to the last close when no
+    // live quote exists, and mixing the two would state a percentage between two
+    // prices observed at different times.
+    if (plan.currentPrice > 0) {
+      opportunity.potentialPercent =
+        ((plan.target.price - plan.currentPrice) / plan.currentPrice) * 100;
+    }
   }
 
   return opportunity;
@@ -143,10 +181,16 @@ export function scan(scored: ScannerInput[], attempted: number, limit = 5): Scan
     .sort((a, b) => a.score - b.score)
     .slice(0, limit);
 
+  // Descending score is exactly "strongest buy → strongest sell": the bands are
+  // score ranges, so one sort produces the full spectrum without special-casing
+  // the sell end the way the truncated `sell` list has to.
+  const ranked = [...all].sort((a, b) => b.score - a.score);
+
   return {
     buy,
     hold,
     sell,
+    ranked,
     byBand,
     lowConfidence,
     scannedAt: new Date(),

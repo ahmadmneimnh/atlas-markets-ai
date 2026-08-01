@@ -18,13 +18,13 @@ import type { Opportunity } from '@/lib/scanner/rank';
 const GROUPS = [
   {
     key: 'buy' as const,
-    title: 'Best buying opportunities',
+    title: 'Top AI Buys Today',
     hint: 'Strong Buy and Buy, highest AI score first',
   },
-  { key: 'hold' as const, title: 'Hold', hint: 'closest to becoming a buy' },
+  { key: 'hold' as const, title: 'Top Holds', hint: 'closest to becoming a buy' },
   {
     key: 'sell' as const,
-    title: 'Strongest sell signals',
+    title: 'Top AI Sells Today',
     hint: 'Sell and Strong Sell, lowest AI score first',
   },
 ];

@@ -226,6 +226,60 @@ export interface FearGreed {
   source: string;
 }
 
+/**
+ * Sell-side consensus: where analysts think the price is going, and how they rate it.
+ *
+ * Every field is optional and none is derived from another. A consensus target
+ * with no rating distribution is a normal, complete answer from some vendors, and
+ * inferring "mostly buys" from "target is above spot" would manufacture a second
+ * opinion out of the first one.
+ *
+ * These are other people's forecasts, not measurements. The scoring engine treats
+ * them as one input among many and the UI labels them as sell-side estimates —
+ * they are the only forward-looking numbers in the system, and the only ones that
+ * can be wrong in a way no amount of data quality would have caught.
+ */
+export interface AnalystEstimates {
+  symbol: string;
+  targetConsensus?: number;
+  targetHigh?: number;
+  targetLow?: number;
+  /** Counts from the most recent published rating distribution. */
+  strongBuy?: number;
+  buy?: number;
+  hold?: number;
+  sell?: number;
+  strongSell?: number;
+  source: string;
+  asOf: Date;
+}
+
+/**
+ * One filing from a statutory disclosure system (SEC EDGAR today).
+ *
+ * Carries the document link rather than parsed contents. A 10-K is hundreds of
+ * pages of prose and tables; summarising it into a field here would mean
+ * generating an interpretation and presenting it as a record, which is the one
+ * thing a filings feature must not do. The structured financials already come
+ * from FMP, where they are vendor-parsed and attributable.
+ */
+export interface Filing {
+  /** Accession number — EDGAR's unique id for the submission. */
+  id: string;
+  /** Form type: "10-K", "10-Q", "8-K", "4", "DEF 14A". Passed through verbatim. */
+  form: string;
+  /** When the filer submitted it. */
+  filedAt: Date;
+  /** End of the period the filing covers, when the form declares one. */
+  periodOfReport?: Date;
+  /** Link to the filing index on sec.gov. */
+  url: string;
+  /** The filer's registered name, as EDGAR holds it. */
+  filer: string;
+  description?: string;
+  source: string;
+}
+
 export interface SearchHit {
   symbol: string;
   name: string;
@@ -281,7 +335,9 @@ export type Capability =
   | 'search'
   | 'earnings'
   | 'economic.calendar'
-  | 'fear.greed';
+  | 'fear.greed'
+  | 'filings'
+  | 'analyst';
 
 /**
  * A provider declares which capabilities it implements, not what it is. The registry
@@ -311,4 +367,8 @@ export interface Provider {
   fearGreed?(): Promise<ProviderResult<FearGreed>>;
   cryptoMetrics?(symbol: string): Promise<ProviderResult<CryptoMetrics>>;
   search?(query: string): Promise<ProviderResult<SearchHit[]>>;
+  /** Statutory filings, most recent first. */
+  filings?(symbol: string, limit: number): Promise<ProviderResult<Filing[]>>;
+  /** Sell-side price targets and rating distribution. */
+  analystEstimates?(symbol: string): Promise<ProviderResult<AnalystEstimates>>;
 }

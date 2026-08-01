@@ -65,7 +65,7 @@ export default async function AssetPage({
   // returns a ProviderResult rather than throwing — so an unconfigured or
   // premium-only endpoint renders as a stated reason instead of removing the
   // section, which would leave a reader assuming the data does not exist.
-  const [income, balance, cashflow, priceTarget, insiders, ownership] =
+  const [income, balance, cashflow, priceTarget, insiders, ownership, filings] =
     kind === 'equity'
       ? await Promise.all([
           detail.incomeStatement(symbol, 5),
@@ -74,8 +74,9 @@ export default async function AssetPage({
           detail.priceTarget(symbol),
           detail.insiderTransactions(symbol),
           detail.institutionalOwnership(symbol),
+          market.filings(symbol, 8),
         ])
-      : [null, null, null, null, null, null];
+      : [null, null, null, null, null, null, null];
 
   const [cryptoMetrics, tvl] =
     kind === 'crypto'
@@ -338,6 +339,55 @@ export default async function AssetPage({
               </Card>
             </section>
           </div>
+
+          {/*
+            SEC filings: links to the primary record, not a summary of it. A
+            generated précis of a 10-K would be an interpretation presented with
+            the authority of a legal document, which is the one thing this
+            section must never be.
+          */}
+          <section>
+            <SectionTitle hint="primary source documents, direct from EDGAR">
+              SEC filings
+            </SectionTitle>
+            {filings?.ok ? (
+              <Card className="divide-y divide-glass-border/50">
+                {filings.data.map((f) => (
+                  <a
+                    key={f.id}
+                    href={f.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-baseline gap-4 p-4 transition-colors hover:bg-glass"
+                  >
+                    <span className="w-20 shrink-0 rounded border border-glass-border px-1.5 py-0.5 text-center text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+                      {f.form}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-ink">
+                        {f.description ?? f.filer}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-ink-faint">
+                        Filed {f.filedAt.toISOString().slice(0, 10)}
+                        {f.periodOfReport
+                          ? ` · period ending ${f.periodOfReport.toISOString().slice(0, 10)}`
+                          : ''}
+                      </span>
+                    </span>
+                    <Provenance source={f.source} />
+                  </a>
+                ))}
+              </Card>
+            ) : (
+              <Card className="p-5">
+                <Unavailable
+                  title="No SEC filings"
+                  reason={filings?.detail ?? filings?.reason.replace(/_/g, ' ') ?? 'unavailable'}
+                  hint="EDGAR needs no API key, but it does require SEC_USER_AGENT to name a contact."
+                />
+              </Card>
+            )}
+          </section>
         </>
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">

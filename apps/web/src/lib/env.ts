@@ -27,6 +27,14 @@ export const env = {
   databaseUrl: read('DATABASE_URL'),
   redisUrl: read('REDIS_URL'),
 
+  /**
+   * Contact string sent to SEC EDGAR, e.g. "Atlas Markets admin@example.com".
+   * Not a credential — EDGAR authenticates nothing but requires a declared
+   * identity and answers 403 without one. Unset means the filings capability
+   * reports unconfigured; the adapter will not invent a contact address.
+   */
+  secUserAgent: read('SEC_USER_AGENT'),
+
   providers: {
     finnhub: read('FINNHUB_API_KEY'),
     alphaVantage: read('ALPHA_VANTAGE_API_KEY'),
@@ -35,7 +43,15 @@ export const env = {
     polygon: read('POLYGON_API_KEY'),
     coinGecko: read('COINGECKO_API_KEY'), // optional: public tier needs no key
     coinMarketCap: read('COINMARKETCAP_API_KEY'),
-    newsApi: read('NEWSAPI_KEY'),
+    // Binance's market-data endpoints (ticker, klines) are public and unsigned.
+    // The slot exists because deployments behind a paid plan present a key for
+    // higher rate limits; Atlas never calls an endpoint that requires signing,
+    // so an unset value costs nothing but throughput.
+    binance: read('BINANCE_API_KEY'),
+    // NEWS_API_KEY is the documented name. NEWSAPI_KEY is still read so an
+    // existing .env keeps working — dropping it would silently disable a
+    // configured provider on upgrade, which looks identical to an outage.
+    newsApi: read('NEWS_API_KEY') ?? read('NEWSAPI_KEY'),
   },
 
   /**
@@ -73,5 +89,6 @@ export function configuredProviders(): Record<string, boolean> {
     binance: true, // public market data endpoints are unauthenticated
     coinbase: true, // public market data endpoints are unauthenticated
     newsapi: Boolean(env.providers.newsApi),
+    sec: true, // EDGAR is public; it requires a User-Agent, not a credential
   };
 }

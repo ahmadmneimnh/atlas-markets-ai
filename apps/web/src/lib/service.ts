@@ -7,8 +7,8 @@ import { scoreAsset, InsufficientDataError } from './analysis/engine';
 import {
   INSUFFICIENT_DATA_MESSAGE,
   buildTradePlan,
-  type AnalystTarget,
   type PlanOutcome,
+  type TradePlan,
 } from './analysis/decision';
 import type { AssetContext, AssetScore } from './analysis/types';
 import type { AssetRef, Quote, ProviderResult } from './providers/types';
@@ -29,6 +29,15 @@ export interface ScoreOutcome {
   ok: true;
   score: AssetScore;
   quote?: Quote;
+  /**
+   * Entry, target and stop for this score.
+   *
+   * Computed here, where the context is already in hand, rather than by a second
+   * pass: the scanner needs a target to show upside on a card, the detail page
+   * needs the full plan, and deriving it twice from two contexts is how the card
+   * and the page end up quoting different targets for the same asset.
+   */
+  plan?: TradePlan;
 }
 
 export interface ScoreFailure {
@@ -42,7 +51,7 @@ export interface ScoreFailure {
 export async function buildContext(ref: AssetRef): Promise<AssetContext> {
   const isCrypto = ref.kind === 'crypto';
 
-  const [quote, ohlcv, fundamentals, cryptoMetrics, news] = await Promise.all([
+  const [quote, ohlcv, fundamentals, cryptoMetrics, news, analyst] = await Promise.all([
     market.quote(ref.symbol, ref.kind),
     market.ohlcv(ref.symbol, '1d', 260),
     isCrypto
@@ -52,6 +61,13 @@ export async function buildContext(ref: AssetRef): Promise<AssetContext> {
       ? market.cryptoMetrics(ref.symbol)
       : Promise.resolve({ ok: false, reason: 'not_supported' } as const),
     market.news(ref.symbol, 25),
+    // Sell-side estimates feed both the fundamental factor and the target
+    // selection in the decision module, so they belong in the shared context
+    // rather than being fetched separately by each. Cached for a day at the
+    // registry, which is what makes it affordable across a whole-universe scan.
+    isCrypto
+      ? Promise.resolve({ ok: false, reason: 'not_supported' } as const)
+      : market.analystEstimates(ref.symbol),
   ]);
 
   const unwrap = <T>(r: ProviderResult<T> | { ok: false; reason: string }): T | undefined =>
@@ -70,6 +86,9 @@ export async function buildContext(ref: AssetRef): Promise<AssetContext> {
   if (m) ctx.cryptoMetrics = m;
   if (n) ctx.news = n;
 
+  const est = unwrap(analyst);
+  if (est) ctx.analyst = est;
+
   return ctx;
 }
 
@@ -83,6 +102,8 @@ export async function getScore(ref: AssetRef): Promise<ScoreOutcome | ScoreFailu
         const score = await scoreAsset(ctx);
         const out: ScoreOutcome = { ok: true, score };
         if (ctx.quote) out.quote = ctx.quote;
+        const plan = buildTradePlan(ctx, score);
+        if (plan.ok) out.plan = plan.plan;
         return out;
       } catch (err) {
         if (err instanceof InsufficientDataError) {
@@ -137,54 +158,31 @@ export type { PlanOutcome, TradePlan } from './analysis/decision';
 /**
  * The investment decision: entry, target and stop for one asset.
  *
- * Separate from `getScore` rather than folded into it, for one reason that is
- * about cost rather than tidiness. The plan wants sell-side price targets, and
- * that is an extra provider call per asset. `getScore` is what the market scanner
- * runs across the whole universe — adding a target lookup there would multiply
- * one page load into fifty analyst-target requests and exhaust an FMP free tier
- * in a single visit. The detail page asks for a plan; the scanner never does.
+ * A read of the plan `getScore` already computed, not a second derivation. The
+ * plan is built inside the scoring pass because that is where the assembled
+ * context lives, and because the scanner needs the same target to show upside on
+ * a card. Recomputing it here from a freshly-built context would be both a
+ * duplicate pass and a correctness hazard: the two contexts can straddle a cache
+ * expiry, and the card and the detail page would then quote different targets
+ * for the same asset within the same minute.
  *
- * `buildContext` runs again here, but every call inside it is served by the
- * registry's own cache (daily bars are held for six hours), so a plan requested
- * alongside a score costs cache reads, not round trips.
+ * A score that exists but yielded no plan is reported with the reasons the
+ * decision module gave, rather than as a generic failure.
  */
 export async function getPlan(ref: AssetRef): Promise<PlanOutcome> {
-  return cached(
-    cacheKey('plan', ref.kind, ref.symbol),
-    TTL.score,
-    async () => {
-      const [ctx, outcome] = await Promise.all([buildContext(ref), getScore(ref)]);
+  const outcome = await getScore(ref);
 
-      // No score, no plan. Levels without a recommendation to act on would be
-      // four numbers with nothing tying them to a decision.
-      if (!outcome.ok) {
-        return {
-          ok: false,
-          message: INSUFFICIENT_DATA_MESSAGE,
-          missing: [outcome.message],
-        } satisfies PlanOutcome;
-      }
+  if (!outcome.ok) {
+    return { ok: false, message: INSUFFICIENT_DATA_MESSAGE, missing: [outcome.message] };
+  }
 
-      let analyst: AnalystTarget | undefined;
-      if (ref.kind === 'equity') {
-        const target = await fmpExtras.priceTarget(ref.symbol);
-        if (target.ok) {
-          analyst = { source: 'fmp' };
-          // Each field is copied only when the provider actually sent it —
-          // spreading the payload would turn an absent consensus into `undefined`
-          // that later reads as "no opinion" rather than "never asked".
-          if (target.data.targetConsensus !== undefined) {
-            analyst.consensus = target.data.targetConsensus;
-          }
-          if (target.data.targetHigh !== undefined) analyst.high = target.data.targetHigh;
-          if (target.data.targetLow !== undefined) analyst.low = target.data.targetLow;
-        }
-      }
+  if (outcome.plan) return { ok: true, plan: outcome.plan };
 
-      return buildTradePlan(ctx, outcome.score, analyst);
-    },
-    (value) => (value.ok ? TTL.score : TTL.failure),
-  );
+  // The score succeeded but the levels did not. Re-deriving against the cached
+  // context is cheap (every provider call inside it is a cache read) and gives
+  // the reader the specific missing input instead of "unavailable".
+  const ctx = await buildContext(ref);
+  return buildTradePlan(ctx, outcome.score);
 }
 
 /**
@@ -237,10 +235,14 @@ export const detail = {
  * The cache TTL matches the score TTL: a scan is only as fresh as the scores it
  * ranks, and caching it for longer would report a stale ordering as current.
  */
-export async function runScanner(
-  kind: 'equity' | 'crypto' | 'all' = 'all',
-  limit = 5,
-): Promise<ScannerResult> {
+/**
+ * Which assets a scan covers.
+ *
+ * When no equity provider is configured the equity universe is dropped rather
+ * than attempted: scoring thirty tickers that will all fail costs thirty round
+ * trips to report one fact the registry already knows.
+ */
+function scanUniverse(kind: 'equity' | 'crypto' | 'all'): typeof UNIVERSE {
   const providers = configuredProviders();
   const hasEquityProvider = providers['finnhub'] || providers['twelvedata'] || providers['polygon'];
 
@@ -251,30 +253,79 @@ export async function runScanner(
         ? UNIVERSE.filter((entry) => entry.kind === 'equity')
         : UNIVERSE;
 
-  const refs = hasEquityProvider || kind === 'crypto' ? universe : CRYPTO_UNIVERSE;
+  return hasEquityProvider || kind === 'crypto' ? universe : CRYPTO_UNIVERSE;
+}
 
+/** The scan itself, without caching. Both the live and daily entry points use it. */
+async function runScannerUncached(
+  kind: 'equity' | 'crypto' | 'all',
+  limit: number,
+): Promise<ScannerResult> {
+  const refs = scanUniverse(kind);
+  const results = await scoreMany(refs, 4);
+
+  const inputs: ScannerInput[] = results.flatMap((entry) => {
+    if (!entry.result.ok) return [];
+    const outcome = entry.result;
+    const known = UNIVERSE.find((u) => u.symbol === entry.ref.symbol && u.kind === entry.ref.kind);
+    const item: ScannerInput = { name: known?.name ?? entry.ref.symbol, score: outcome.score };
+    if (outcome.quote) item.quote = outcome.quote;
+    if (outcome.plan) item.plan = outcome.plan;
+    return [item];
+  });
+
+  return scan(inputs, refs.length, limit);
+}
+
+export async function runScanner(
+  kind: 'equity' | 'crypto' | 'all' = 'all',
+  limit = 5,
+): Promise<ScannerResult> {
   return cached(
     cacheKey('scanner', kind, limit),
     TTL.score,
-    async () => {
-      const results = await scoreMany(refs, 4);
-
-      const inputs: ScannerInput[] = results.flatMap((entry) => {
-        if (!entry.result.ok) return [];
-        const outcome = entry.result;
-        const known = UNIVERSE.find(
-          (u) => u.symbol === entry.ref.symbol && u.kind === entry.ref.kind,
-        );
-        const item: ScannerInput = { name: known?.name ?? entry.ref.symbol, score: outcome.score };
-        if (outcome.quote) item.quote = outcome.quote;
-        return [item];
-      });
-
-      return scan(inputs, refs.length, limit);
-    },
+    () => runScannerUncached(kind, limit),
     // A scan is cached for as long as the scores it ranks. There is no separate
     // failure TTL: `scan` always returns a result, reporting an empty list with
     // its coverage rather than throwing.
     () => TTL.score,
   );
+}
+
+/**
+ * The daily scan: every tracked stock and crypto, strongest buy to strongest sell.
+ *
+ * Distinct from `runScanner` in one way that matters, and it is not the size of
+ * the list. This one is keyed by UTC date and held for the day, so the ranking a
+ * reader saw at 09:00 is the ranking they see at 15:00.
+ *
+ * That is the point of a *daily* scanner rather than a live one. A ranking that
+ * silently reshuffles every five minutes cannot be worked through: an asset
+ * studied at position 4 has moved to position 11 by the time its neighbour is
+ * read, and there is no way to tell whether that reflects real news or a quote
+ * that ticked. The homepage keeps the live view, where freshness is the whole
+ * point; this is the stable one.
+ *
+ * The cost is stated rather than hidden — the page shows the timestamp the scan
+ * was computed at, so nobody reads a five-hour-old price as current.
+ */
+export async function runDailyScan(kind: 'equity' | 'crypto' | 'all' = 'all'): Promise<{
+  result: ScannerResult;
+  /** UTC date the ranking belongs to, as YYYY-MM-DD. */
+  scanDate: string;
+}> {
+  const scanDate = new Date().toISOString().slice(0, 10);
+
+  const result = await cached(
+    cacheKey('scanner-daily', scanDate, kind),
+    // A day, minus a margin: expiring exactly at midnight would leave the first
+    // request of the new day racing the expiry of the old one.
+    23 * 60 * 60,
+    // Ranking the whole universe means no per-band truncation, so the limit is
+    // the universe size rather than the homepage's five.
+    async () => runScannerUncached(kind, UNIVERSE.length),
+    () => 23 * 60 * 60,
+  );
+
+  return { result, scanDate };
 }

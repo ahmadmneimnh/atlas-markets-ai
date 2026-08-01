@@ -22,6 +22,7 @@ export const metadata: Metadata = {
 const NAV = [
   { href: '/stocks', label: 'Stocks' },
   { href: '/crypto', label: 'Crypto' },
+  { href: '/scanner', label: 'Scanner' },
 ];
 
 /** Still reachable, just not competing with the primary choice. */

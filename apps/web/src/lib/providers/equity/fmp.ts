@@ -1,6 +1,7 @@
 import { env } from '@/lib/env';
 import { fetchJson } from '@/lib/http';
 import type {
+  AnalystEstimates,
   CompanyProfile,
   Fundamentals,
   NewsArticle,
@@ -162,7 +163,7 @@ function errorEnvelope(body: unknown) {
 export const fmp: Provider = {
   id: 'fmp',
   label: 'Financial Modeling Prep',
-  capabilities: ['quote', 'profile', 'fundamentals', 'news'],
+  capabilities: ['quote', 'profile', 'fundamentals', 'news', 'analyst'],
 
   isConfigured: () => Boolean(env.providers.fmp),
 
@@ -314,6 +315,57 @@ export const fmp: Provider = {
     } catch (error) {
       return classifyError(error);
     }
+  },
+
+  /**
+   * Price targets and the rating distribution, as one value.
+   *
+   * The two live at different FMP endpoints and are fetched concurrently. A
+   * failure on either side is tolerated as long as the other returns something,
+   * because "targets but no ratings" is a genuinely useful partial answer — but
+   * if both fail the result is unavailable rather than an empty object, which
+   * would read downstream as "analysts have no view" instead of "we did not get
+   * one".
+   */
+  async analystEstimates(symbol: string): Promise<ProviderResult<AnalystEstimates>> {
+    if (!env.providers.fmp) {
+      return unavailable('no_provider_configured', 'FMP_API_KEY is not set');
+    }
+
+    const [targets, ratings] = await Promise.all([
+      fmpExtras.priceTarget(symbol),
+      fmpExtras.analystRatings(symbol),
+    ]);
+
+    if (!targets.ok && !ratings.ok) {
+      return targets.reason === 'not_found' ? targets : ratings;
+    }
+
+    const estimates: AnalystEstimates = { symbol, source: 'fmp', asOf: new Date() };
+
+    if (targets.ok) {
+      setNumber(estimates, 'targetConsensus', targets.data.targetConsensus);
+      setNumber(estimates, 'targetHigh', targets.data.targetHigh);
+      setNumber(estimates, 'targetLow', targets.data.targetLow);
+    }
+
+    if (ratings.ok) {
+      // The endpoint returns a history, most recent first. Only the latest row
+      // is a current view; averaging six months of distributions would blur a
+      // recent downgrade into the consensus that preceded it.
+      const latest = ratings.data[0];
+      if (latest) {
+        setNumber(estimates, 'strongBuy', latest.analystRatingsStrongBuy);
+        setNumber(estimates, 'buy', latest.analystRatingsbuy);
+        setNumber(estimates, 'hold', latest.analystRatingsHold);
+        setNumber(estimates, 'sell', latest.analystRatingsSell);
+        setNumber(estimates, 'strongSell', latest.analystRatingsStrongSell);
+        const asOf = new Date(latest.date);
+        if (!Number.isNaN(asOf.getTime())) estimates.asOf = asOf;
+      }
+    }
+
+    return ok(estimates);
   },
 };
 

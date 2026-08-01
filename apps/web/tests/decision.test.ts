@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  INSUFFICIENT_DATA_MESSAGE,
-  buildTradePlan,
-  stanceOf,
-  type AnalystTarget,
-} from '@/lib/analysis/decision';
+import { INSUFFICIENT_DATA_MESSAGE, buildTradePlan, stanceOf } from '@/lib/analysis/decision';
 import { atr, sma } from '@/lib/analysis/indicators';
 import type { AssetContext, AssetScore, Recommendation } from '@/lib/analysis/types';
-import type { Candle } from '@/lib/providers/types';
+import type { AnalystEstimates, Candle } from '@/lib/providers/types';
+
+/** Attaches sell-side estimates to a context, as the service layer does. */
+function withAnalyst(ctx: AssetContext, analyst: Partial<AnalystEstimates>): AssetContext {
+  return {
+    ...ctx,
+    analyst: { symbol: 'TEST', source: 'fmp', asOf: new Date('2026-08-01T12:00:00Z'), ...analyst },
+  };
+}
 
 /** Builds candles from closes, with a high/low envelope so ATR > 0. */
 function candlesFrom(closes: number[], envelope = 0.01): Candle[] {
@@ -285,8 +288,12 @@ describe('citations and provenance', () => {
   });
 
   it('includes an analyst consensus as a target candidate and credits the provider', () => {
-    const analyst: AnalystTarget = { consensus: 130, high: 150, low: 110, source: 'fmp' };
-    const plan = expectOk(buildTradePlan(ctx, scoreOf('BUY'), analyst));
+    const plan = expectOk(
+      buildTradePlan(
+        withAnalyst(ctx, { targetConsensus: 130, targetHigh: 150, targetLow: 110 }),
+        scoreOf('BUY'),
+      ),
+    );
 
     const cited = plan.target.inputs.find((i) => i.label === 'Analyst consensus target');
     expect(cited?.source).toBe('fmp');
@@ -355,8 +362,12 @@ describe('reward-to-risk', () => {
   });
 
   it('prefers the nearest level that clears the threshold over the very nearest', () => {
-    const analyst: AnalystTarget = { consensus: 400, source: 'fmp' };
-    const plan = expectOk(buildTradePlan(contextFrom(sawtooth()), scoreOf('BUY'), analyst));
+    const plan = expectOk(
+      buildTradePlan(
+        withAnalyst(contextFrom(sawtooth()), { targetConsensus: 400 }),
+        scoreOf('BUY'),
+      ),
+    );
 
     // A 400 target on a ~100 asset clears any ratio, but it is far away; the
     // module must not jump to it if a nearer level already pays 1.5:1.

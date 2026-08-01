@@ -148,7 +148,13 @@ export async function scoreAsset(
   // scaled by the factor's effective weight.
   const topReasons: Signal[] = breakdown
     .flatMap((b) =>
-      b.signals.map((sig) => ({ sig, impact: sig.weight * (b.effectiveWeight / 100) })),
+      b.signals.map((sig) => ({
+        // Stamped with its factor on the way out, so a consumer that only ever
+        // sees `topReasons` — a card, an alert, an export — can still group by
+        // where the evidence came from.
+        sig: { ...sig, factor: b.factor },
+        impact: sig.weight * (b.effectiveWeight / 100),
+      })),
     )
     .filter((x) => x.sig.direction !== 'neutral')
     .sort((a, b) => b.impact - a.impact)

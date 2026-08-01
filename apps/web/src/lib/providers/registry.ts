@@ -13,6 +13,9 @@ import type {
   CryptoMetrics,
   SearchHit,
   Unavailable,
+  EarningsEvent,
+  EconomicEvent,
+  FearGreed,
 } from './types';
 import { unavailable } from './types';
 
@@ -26,6 +29,7 @@ import { coingecko } from './crypto/coingecko';
 import { binance } from './crypto/binance';
 import { coinmarketcap } from './crypto/coinmarketcap';
 import { coinbase } from './crypto/coinbase';
+import { alternativeme } from './sentiment/alternativeme';
 
 /**
  * Capability-routed provider registry.
@@ -47,6 +51,7 @@ const ALL: Provider[] = [
   coinbase,
   coingecko,
   coinmarketcap,
+  alternativeme,
 ];
 
 /**
@@ -78,6 +83,9 @@ const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
   'crypto.quote': ['binance', 'coinbase', 'coingecko', 'coinmarketcap'],
   'crypto.metrics': ['coingecko', 'coinmarketcap'],
   search: ['finnhub', 'twelvedata', 'coingecko', 'coinmarketcap', 'polygon', 'yahoo'],
+  earnings: ['finnhub'],
+  'economic.calendar': ['finnhub'],
+  'fear.greed': ['alternativeme'],
 };
 
 function envOverride(cap: Capability): string[] {
@@ -230,6 +238,39 @@ export const market = {
       return firstFailure ?? unavailable('not_found', `no results for "${query}"`);
     }
     return { ok: true, data: hits };
+  },
+};
+
+/**
+ * Market-wide data for the dashboard. Keyed by window rather than by symbol, so
+ * one fetch serves every viewer for the life of the TTL.
+ */
+export const marketWide = {
+  async earnings(from: string, to: string): Promise<ProviderResult<EarningsEvent[]>> {
+    return cached(
+      cacheKey('earnings', from, to),
+      TTL.calendar,
+      () => resolve<EarningsEvent[]>('earnings', (p) => p.earnings?.(from, to)),
+      resultTtl(TTL.calendar),
+    );
+  },
+
+  async economicCalendar(from: string, to: string): Promise<ProviderResult<EconomicEvent[]>> {
+    return cached(
+      cacheKey('economic', from, to),
+      TTL.calendar,
+      () => resolve<EconomicEvent[]>('economic.calendar', (p) => p.economicCalendar?.(from, to)),
+      resultTtl(TTL.calendar),
+    );
+  },
+
+  async fearGreed(): Promise<ProviderResult<FearGreed>> {
+    return cached(
+      cacheKey('feargreed'),
+      TTL.fearGreed,
+      () => resolve<FearGreed>('fear.greed', (p) => p.fearGreed?.()),
+      resultTtl(TTL.fearGreed),
+    );
   },
 };
 

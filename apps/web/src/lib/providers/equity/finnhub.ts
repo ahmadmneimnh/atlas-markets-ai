@@ -9,6 +9,8 @@ import type {
   NewsArticle,
   SearchHit,
   Market,
+  EarningsEvent,
+  EconomicEvent,
 } from '../types';
 import { ok, unavailable } from '../types';
 import { classifyError } from '../errors';
@@ -52,6 +54,31 @@ interface FinnhubNews {
 interface FinnhubSearch {
   result?: { symbol: string; description: string; type: string }[];
 }
+interface FinnhubEarningsCalendar {
+  earningsCalendar?: {
+    symbol: string;
+    date: string;
+    hour?: string;
+    quarter?: number;
+    year?: number;
+    epsEstimate?: number | null;
+    epsActual?: number | null;
+    revenueEstimate?: number | null;
+    revenueActual?: number | null;
+  }[];
+}
+interface FinnhubEconomicCalendar {
+  economicCalendar?: {
+    country: string;
+    event: string;
+    time: string;
+    impact?: string;
+    actual?: number | null;
+    estimate?: number | null;
+    prev?: number | null;
+    unit?: string;
+  }[];
+}
 
 function url(path: string, params: Record<string, string>): string {
   const q = new URLSearchParams({ ...params, token: env.providers.finnhub ?? '' });
@@ -71,7 +98,15 @@ function num(v: unknown): number | undefined {
 export const finnhub: Provider = {
   id: 'finnhub',
   label: 'Finnhub',
-  capabilities: ['quote', 'profile', 'fundamentals', 'news', 'search'],
+  capabilities: [
+    'quote',
+    'profile',
+    'fundamentals',
+    'news',
+    'search',
+    'earnings',
+    'economic.calendar',
+  ],
 
   isConfigured: () => Boolean(env.providers.finnhub),
 
@@ -215,6 +250,95 @@ export const finnhub: Provider = {
           source: 'finnhub',
         }));
       return ok(hits);
+    } catch (e) {
+      return classifyError(e);
+    }
+  },
+
+  async earnings(from: string, to: string): Promise<ProviderResult<EarningsEvent[]>> {
+    try {
+      const r = await fetchJson<FinnhubEarningsCalendar>({
+        provider: 'finnhub',
+        url: url('/calendar/earnings', { from, to }),
+        rateLimit: LIMIT,
+      });
+
+      const rows = r?.earningsCalendar ?? [];
+      if (rows.length === 0) return unavailable('not_found', 'no earnings in window');
+
+      return ok(
+        rows
+          .map((row): EarningsEvent => {
+            const event: EarningsEvent = {
+              symbol: row.symbol,
+              // Finnhub dates are exchange-local calendar days with no time. Parsed
+              // as UTC midnight so the date is stable; rendering it in a local
+              // timezone would shift some entries by a day.
+              date: new Date(`${row.date}T00:00:00Z`),
+              source: 'finnhub',
+            };
+            if (row.hour === 'bmo' || row.hour === 'amc' || row.hour === 'dmh') {
+              event.hour = row.hour;
+            }
+            setNumber(event, 'quarter', row.quarter);
+            setNumber(event, 'year', row.year);
+            // epsEstimate and epsActual stay distinct. Collapsing them would make
+            // a forecast indistinguishable from a result.
+            setNumber(event, 'epsEstimate', row.epsEstimate);
+            setNumber(event, 'epsActual', row.epsActual);
+            setNumber(event, 'revenueEstimate', row.revenueEstimate);
+            setNumber(event, 'revenueActual', row.revenueActual);
+            return event;
+          })
+          .sort((a, b) => a.date.getTime() - b.date.getTime()),
+      );
+    } catch (e) {
+      return classifyError(e);
+    }
+  },
+
+  async economicCalendar(from: string, to: string): Promise<ProviderResult<EconomicEvent[]>> {
+    try {
+      const r = await fetchJson<FinnhubEconomicCalendar>({
+        provider: 'finnhub',
+        url: url('/calendar/economic', { from, to }),
+        rateLimit: LIMIT,
+      });
+
+      const rows = r?.economicCalendar ?? [];
+      // This endpoint is premium-only. Finnhub answers a free key with 200 and an
+      // empty body rather than 403, so "empty" here means "not on your plan" far
+      // more often than "no releases this week" — and the UI says exactly that
+      // instead of rendering a convincingly empty calendar.
+      if (rows.length === 0) {
+        return unavailable(
+          'not_supported',
+          'Finnhub returns an empty economic calendar on free plans; a premium key is required.',
+        );
+      }
+
+      return ok(
+        rows
+          .map((row): EconomicEvent => {
+            const event: EconomicEvent = {
+              id: `${row.country}-${row.event}-${row.time}`,
+              event: row.event,
+              country: row.country,
+              time: new Date(row.time.replace(' ', 'T') + 'Z'),
+              source: 'finnhub',
+            };
+            const impact = row.impact?.toLowerCase();
+            if (impact === 'low' || impact === 'medium' || impact === 'high') {
+              event.impact = impact;
+            }
+            setNumber(event, 'actual', row.actual);
+            setNumber(event, 'estimate', row.estimate);
+            setNumber(event, 'previous', row.prev);
+            if (row.unit) event.unit = row.unit;
+            return event;
+          })
+          .sort((a, b) => a.time.getTime() - b.time.getTime()),
+      );
     } catch (e) {
       return classifyError(e);
     }

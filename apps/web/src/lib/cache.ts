@@ -17,6 +17,11 @@ export const TTL = {
   profile: 7 * 24 * 60 * 60,
   news: 10 * 60,
   score: 5 * 60,
+  // Published once daily, so anything shorter re-fetches an unchanged number.
+  fearGreed: 30 * 60,
+  // Calendars shift when a company reschedules; an hour is responsive enough
+  // and keeps a dashboard refresh from costing a calendar call every time.
+  calendar: 60 * 60,
   failure: 30,
 } as const;
 

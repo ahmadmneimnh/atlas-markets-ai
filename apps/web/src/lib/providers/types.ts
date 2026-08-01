@@ -170,6 +170,62 @@ export interface NewsArticle {
   source: string;
 }
 
+/**
+ * A scheduled earnings report.
+ *
+ * `epsEstimate` is the consensus *before* the release and `epsActual` is filled
+ * in after. Both optional and never merged into one field: "expected 1.20" and
+ * "reported 1.20" are different claims, and a single field forces the UI to guess
+ * which it is holding.
+ */
+export interface EarningsEvent {
+  symbol: string;
+  name?: string;
+  date: Date;
+  /** 'bmo' before market open, 'amc' after market close, undefined if unstated. */
+  hour?: 'bmo' | 'amc' | 'dmh';
+  quarter?: number;
+  year?: number;
+  epsEstimate?: number;
+  epsActual?: number;
+  revenueEstimate?: number;
+  revenueActual?: number;
+  source: string;
+}
+
+/** A macroeconomic release: CPI, payrolls, a rate decision. */
+export interface EconomicEvent {
+  id: string;
+  event: string;
+  country: string;
+  time: Date;
+  /** Vendor-assigned market impact. Passed through, never invented. */
+  impact?: 'low' | 'medium' | 'high';
+  actual?: number;
+  estimate?: number;
+  previous?: number;
+  unit?: string;
+  source: string;
+}
+
+/**
+ * Fear & Greed reading, 0 (extreme fear) to 100 (extreme greed).
+ *
+ * `classification` is the vendor's own label rather than one derived locally —
+ * re-deriving it from the number would silently disagree with the vendor's
+ * published bands the first time they move one.
+ */
+export interface FearGreed {
+  value: number;
+  classification: string;
+  /** Which market the reading covers. The crypto and equity indices differ. */
+  market: 'crypto' | 'equity';
+  asOf: Date;
+  previousClose?: number;
+  weekAgo?: number;
+  source: string;
+}
+
 export interface SearchHit {
   symbol: string;
   name: string;
@@ -222,7 +278,10 @@ export type Capability =
   | 'news'
   | 'crypto.quote'
   | 'crypto.metrics'
-  | 'search';
+  | 'search'
+  | 'earnings'
+  | 'economic.calendar'
+  | 'fear.greed';
 
 /**
  * A provider declares which capabilities it implements, not what it is. The registry
@@ -246,6 +305,10 @@ export interface Provider {
   profile?(symbol: string): Promise<ProviderResult<CompanyProfile>>;
   news?(symbol: string | null, limit: number): Promise<ProviderResult<NewsArticle[]>>;
   cryptoQuote?(symbol: string): Promise<ProviderResult<Quote>>;
+  /** Upcoming or recent earnings, `from`/`to` as ISO dates. */
+  earnings?(from: string, to: string): Promise<ProviderResult<EarningsEvent[]>>;
+  economicCalendar?(from: string, to: string): Promise<ProviderResult<EconomicEvent[]>>;
+  fearGreed?(): Promise<ProviderResult<FearGreed>>;
   cryptoMetrics?(symbol: string): Promise<ProviderResult<CryptoMetrics>>;
   search?(query: string): Promise<ProviderResult<SearchHit[]>>;
 }

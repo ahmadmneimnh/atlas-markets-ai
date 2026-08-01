@@ -1,4 +1,5 @@
 import { scoreMany } from '@/lib/service';
+import { market, marketWide } from '@/lib/providers/registry';
 import { CRYPTO_UNIVERSE, UNIVERSE } from '@/lib/universe';
 import { configuredProviders } from '@/lib/env';
 import { AssetScoreCard } from '@/components/score-card';
@@ -12,6 +13,10 @@ import {
 } from '@/components/primitives';
 import type { AssetScore } from '@/lib/analysis/types';
 import type { Quote } from '@/lib/providers/types';
+import { Heatmap } from '@/components/dashboard/heatmap';
+import { FearGreedGauge } from '@/components/dashboard/fear-greed';
+import { EarningsList, EconomicList, NewsList } from '@/components/dashboard/calendars';
+import { TrendingList, volumeRatioOf, type TrendingItem } from '@/components/dashboard/trending';
 
 // Live market data: rendered per request against the provider cache layer in
 // lib/cache.ts. Static prerendering would bake quotes into the build output and
@@ -33,6 +38,22 @@ export default async function DashboardPage() {
   const refs = hasEquityProvider ? UNIVERSE : CRYPTO_UNIVERSE;
   const results = await scoreMany(refs, 4);
 
+  // Market-wide panels fetched in parallel with each other, after scoring rather
+  // than alongside it: the scorer already saturates the provider rate limiters,
+  // and racing these against it would just convert them into 429s. Each is
+  // independent, so `allSettled` semantics come free from the ProviderResult
+  // union — one unconfigured vendor never blanks the others.
+  const today = new Date();
+  const isoDay = (offsetDays: number) =>
+    new Date(today.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+
+  const [fearGreed, earnings, economic, headlines] = await Promise.all([
+    marketWide.fearGreed(),
+    marketWide.earnings(isoDay(0), isoDay(7)),
+    marketWide.economicCalendar(isoDay(0), isoDay(7)),
+    market.news(null, 8),
+  ]);
+
   const scored: Scored[] = results
     .filter((r) => r.result.ok)
     .map((r) => {
@@ -46,6 +67,28 @@ export default async function DashboardPage() {
   const failed = results.filter((r) => !r.result.ok);
 
   const byScore = [...scored].sort((a, b) => b.score.score - a.score.score);
+
+  // Trending = unusual activity, measured as today's volume against the asset's
+  // own 20-bar average. Assets whose volume signal is missing are excluded, not
+  // ranked at zero: an unmeasured ratio is not a low one.
+  const trending: TrendingItem[] = scored
+    .flatMap((s) => {
+      const measured = volumeRatioOf(s.score);
+      if (!measured) return [];
+      const item: TrendingItem = {
+        name: s.name,
+        score: s.score,
+        volumeRatio: measured.ratio,
+        source: measured.source,
+      };
+      if (s.quote) item.quote = s.quote;
+      return [item];
+    })
+    .sort((a, b) => b.volumeRatio - a.volumeRatio);
+
+  const trendingEquities = trending.filter((t) => t.score.ref.kind === 'equity').slice(0, 5);
+  const trendingCrypto = trending.filter((t) => t.score.ref.kind === 'crypto').slice(0, 5);
+
   const topBuys = byScore.filter((s) => s.score.score >= 56).slice(0, 4);
   const topSells = [...byScore]
     .reverse()
@@ -91,6 +134,77 @@ export default async function DashboardPage() {
           </div>
         </Card>
       ) : null}
+
+      {/* Market-wide panels. Rendered outside the "any asset scored" branch on
+          purpose: Fear & Greed, the calendars and the headline feed depend on
+          neither the tracked universe nor the scoring engine. Nesting them
+          inside it meant a total scoring failure silently removed four panels
+          that were perfectly capable of answering. */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <section>
+          <SectionTitle hint="crypto index">Fear &amp; Greed</SectionTitle>
+          <Card className="p-5">
+            {fearGreed.ok ? (
+              <FearGreedGauge reading={fearGreed.data} />
+            ) : (
+              <Unavailable
+                title="Index unavailable"
+                reason={fearGreed.detail ?? fearGreed.reason.replace(/_/g, ' ')}
+              />
+            )}
+          </Card>
+        </section>
+
+        <section>
+          <SectionTitle hint="next 7 days">Upcoming earnings</SectionTitle>
+          <Card>
+            {earnings.ok ? (
+              <EarningsList events={earnings.data.slice(0, 8)} />
+            ) : (
+              <div className="p-5">
+                <Unavailable
+                  title="No earnings calendar"
+                  reason={earnings.detail ?? earnings.reason.replace(/_/g, ' ')}
+                  hint="Set FINNHUB_API_KEY to enable this panel."
+                />
+              </div>
+            )}
+          </Card>
+        </section>
+
+        <section>
+          <SectionTitle hint="next 7 days">Economic events</SectionTitle>
+          <Card>
+            {economic.ok ? (
+              <EconomicList events={economic.data.slice(0, 8)} />
+            ) : (
+              <div className="p-5">
+                <Unavailable
+                  title="No economic calendar"
+                  reason={economic.detail ?? economic.reason.replace(/_/g, ' ')}
+                />
+              </div>
+            )}
+          </Card>
+        </section>
+      </div>
+
+      <section>
+        <SectionTitle hint="market-wide">Latest news</SectionTitle>
+        <Card>
+          {headlines.ok ? (
+            <NewsList articles={headlines.data.slice(0, 8)} />
+          ) : (
+            <div className="p-5">
+              <Unavailable
+                title="No headlines"
+                reason={headlines.detail ?? headlines.reason.replace(/_/g, ' ')}
+                hint="Set FINNHUB_API_KEY or FMP_API_KEY to enable this panel."
+              />
+            </div>
+          )}
+        </Card>
+      </section>
 
       {scored.length === 0 ? (
         <Unavailable
@@ -167,6 +281,31 @@ export default async function DashboardPage() {
               </Card>
             </section>
           </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <section>
+              <SectionTitle hint="by volume vs 20-bar average">Trending stocks</SectionTitle>
+              <Card>
+                <TrendingList items={trendingEquities} />
+              </Card>
+            </section>
+
+            <section>
+              <SectionTitle hint="by volume vs 20-bar average">Trending crypto</SectionTitle>
+              <Card>
+                <TrendingList items={trendingCrypto} />
+              </Card>
+            </section>
+          </div>
+
+          <section>
+            <SectionTitle hint="colour by 24h move, size by relative magnitude">
+              Market heatmap
+            </SectionTitle>
+            <Card className="p-4">
+              <Heatmap items={scored} />
+            </Card>
+          </section>
 
           <section>
             <SectionTitle hint="full tracked universe">All scored assets</SectionTitle>

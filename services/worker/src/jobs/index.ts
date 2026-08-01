@@ -2,6 +2,8 @@ import { UnrecoverableError, type Job } from 'bullmq';
 import { JOB, JOB_PAYLOADS, QUEUE, type QueueName } from '@atlas/core';
 
 import { logger } from '../lib/logger';
+import { deliverNotification } from './notifications';
+import { evaluateAlerts } from './alerts';
 
 export type JobHandler = (job: Job) => Promise<unknown>;
 
@@ -87,10 +89,10 @@ export const HANDLERS: Record<QueueName, Record<string, JobHandler>> = {
     [JOB.scoreUniverse]: notImplemented('Phase 4'),
   },
   [QUEUE.alerts]: {
-    [JOB.evaluateAlerts]: notImplemented('Phase 8'),
+    [JOB.evaluateAlerts]: evaluateAlerts,
   },
   [QUEUE.notifications]: {
-    [JOB.deliverNotification]: notImplemented('Phase 8'),
+    [JOB.deliverNotification]: deliverNotification,
   },
 };
 

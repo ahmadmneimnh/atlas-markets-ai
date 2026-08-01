@@ -79,9 +79,34 @@ export const evaluateAlertsPayload = z.object({
   asset: assetRefSchema.optional(),
 });
 
+/**
+ * The message is carried in the payload rather than re-read from the database at
+ * delivery time.
+ *
+ * A retry three minutes later must send what the alert actually said when it
+ * fired, not what the row looks like now — by then the price has moved and the
+ * recommendation may have changed, and a notification that contradicts the
+ * condition that triggered it is worse than a late one.
+ */
 export const deliverNotificationPayload = z.object({
   alertId: z.string(),
-  channel: z.enum(['email', 'push', 'sms', 'webhook']),
+  channel: z.enum(['IN_APP', 'EMAIL', 'PUSH', 'SMS', 'TELEGRAM', 'DISCORD', 'WEBHOOK']),
+  message: z.object({
+    title: z.string(),
+    body: z.string(),
+    link: z.string().optional(),
+    symbol: z.string(),
+    /** The evaluator's own reason string — the evidence, shown verbatim. */
+    reason: z.string(),
+  }),
+  recipient: z.object({
+    userId: z.string(),
+    email: z.string().optional(),
+    telegramChatId: z.string().optional(),
+    discordWebhookUrl: z.string().optional(),
+    webhookUrl: z.string().optional(),
+    pushSubscription: z.string().optional(),
+  }),
 });
 
 /** Job name → payload schema. The worker validates against this before running. */

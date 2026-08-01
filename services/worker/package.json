@@ -15,11 +15,13 @@
     "@atlas/db": "*",
     "bullmq": "^5.34.6",
     "ioredis": "^5.4.2",
+    "nodemailer": "^9.0.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@atlas/config": "*",
     "@types/node": "^22.10.5",
+    "@types/nodemailer": "^8.0.1",
     "dotenv-cli": "^8.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

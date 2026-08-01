@@ -9,3 +9,4 @@
  */
 export * from './contracts/scoring';
 export * from './contracts/queues';
+export * from './alerts/evaluate';

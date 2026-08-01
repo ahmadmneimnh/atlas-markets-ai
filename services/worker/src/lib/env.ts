@@ -20,6 +20,13 @@ const schema = z.object({
   /** Base URL of the Python scoring service. */
   AI_ENGINE_URL: z.string().url().default('http://localhost:8000'),
 
+  /**
+   * Base URL of the Next.js BFF. The worker reads market data through it rather
+   * than calling providers directly, so rate limits and circuit breakers stay in
+   * one process.
+   */
+  ATLAS_API_URL: z.string().url().default('http://localhost:3000'),
+
   /** Concurrent jobs per worker. Bounded by provider rate limits, not by CPU. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
 

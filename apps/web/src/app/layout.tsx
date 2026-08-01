@@ -2,14 +2,30 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
 
+import { HeaderSearch } from '@/components/search/header-search';
+
 export const metadata: Metadata = {
   title: 'Atlas Markets AI — Global Market Intelligence',
   description:
     'AI-scored Buy / Hold / Sell recommendations for global equities and crypto, with every figure traced to its source.',
 };
 
+/**
+ * Two destinations, because there are two asset classes.
+ *
+ * Screener, watchlist, portfolio and the system view all still exist and are
+ * still routed — they moved to the footer rather than being deleted. A visitor
+ * arriving for the first time is choosing between stocks and crypto, not between
+ * five tools they have not seen yet, and a nav bar that lists everything makes
+ * that first choice harder rather than easier.
+ */
 const NAV = [
-  { href: '/', label: 'Dashboard' },
+  { href: '/stocks', label: 'Stocks' },
+  { href: '/crypto', label: 'Crypto' },
+];
+
+/** Still reachable, just not competing with the primary choice. */
+const SECONDARY_NAV = [
   { href: '/screener', label: 'Screener' },
   { href: '/watchlist', label: 'Watchlist' },
   { href: '/portfolio', label: 'Portfolio' },
@@ -49,16 +65,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               ))}
             </nav>
 
-            <div className="ml-auto flex items-center gap-3">
-              <form action="/search" className="hidden sm:block">
-                <input
-                  name="q"
-                  placeholder="Search ticker, company, coin…"
-                  aria-label="Search markets"
-                  className="w-64 rounded-lg border border-glass-border bg-glass px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-gold/40"
-                />
-              </form>
-            </div>
+            {/* Follows the visitor off the landing page, so looking something
+                up never requires going back to it — and stays hidden on the
+                landing page itself, where it would duplicate the hero field. */}
+            <HeaderSearch />
           </div>
         </header>
 
@@ -66,6 +76,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <footer className="mt-16 border-t border-glass-border/60 py-8">
           <div className="mx-auto max-w-[1400px] px-6 text-xs leading-relaxed text-ink-faint">
+            <nav aria-label="Secondary" className="mb-6 flex flex-wrap gap-x-6 gap-y-2">
+              {SECONDARY_NAV.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="text-ink-muted transition-colors hover:text-gold"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
             <p className="mb-2">
               <strong className="text-ink-muted">Not investment advice.</strong> Atlas Markets AI
               produces algorithmic scores from public market data for research purposes only.

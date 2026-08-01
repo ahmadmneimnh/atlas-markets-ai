@@ -4,6 +4,24 @@ import path from 'node:path';
 // Repository root, two levels up from apps/web.
 const workspaceRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+/**
+ * Whether this deployment is actually served over HTTPS.
+ *
+ * This gates the CSP's `upgrade-insecure-requests` directive, and getting it
+ * wrong is not cosmetic: that directive tells the browser to rewrite every
+ * `http://` request to `https://`, including Next's own RSC prefetches. On a
+ * plain-HTTP origin — which is what `npm run start` on localhost is, and what
+ * the README tells people to run — every navigation then fails with
+ * ERR_SSL_PROTOCOL_ERROR against a port that speaks no TLS.
+ *
+ * Inferred from the configured public origin rather than from NODE_ENV, because
+ * a local production build is `NODE_ENV=production` over HTTP, and that is
+ * exactly the case that breaks. HSTS already forces HTTPS for real deployments,
+ * so nothing is lost by omitting this on an HTTP origin.
+ */
+const publicOrigin = process.env.AUTH_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '';
+const servedOverHttps = publicOrigin.startsWith('https://');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -68,7 +86,9 @@ const nextConfig = {
               "base-uri 'self'",
               "form-action 'self'",
               "frame-ancestors 'none'",
-              'upgrade-insecure-requests',
+              // Only meaningful, and only safe, on an HTTPS origin — see the
+              // `servedOverHttps` note at the top of this file.
+              ...(servedOverHttps ? ['upgrade-insecure-requests'] : []),
             ].join('; '),
           },
         ],

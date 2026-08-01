@@ -79,6 +79,54 @@ async function fetchSnapshot(
   }
 }
 
+/**
+ * Loads the alerts due for evaluation.
+ *
+ * Prisma's connection errors arrive as a multi-line block containing the failing
+ * query and its surrounding source. That is excellent in a terminal and wrong in
+ * a structured log: it lands as one enormous `message` field on a job that runs
+ * every five minutes, so a single misconfigured DATABASE_URL buries every other
+ * line in the log.
+ *
+ * A connection failure is still thrown — it is genuinely retryable, and BullMQ's
+ * backoff is the right response — but as one sentence naming the host. Anything
+ * that is not a connection error passes through untouched, because that would be
+ * a real bug and its detail is worth having.
+ */
+async function findAlerts(asset?: { symbol: string; kind: string }) {
+  try {
+    return await prisma.alert.findMany({
+      where: {
+        enabled: true,
+        ...(asset ? { asset: { symbol: asset.symbol } } : {}),
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      include: {
+        asset: { select: { symbol: true, kind: true, name: true } },
+        user: { select: { id: true, email: true } },
+      },
+    });
+  } catch (error) {
+    // Matched on the error class, not a code: a connection failure surfaces as
+    // PrismaClientInitializationError with `code` and `errorCode` both
+    // undefined, so a code check silently never fires. The P100x codes below
+    // cover the cases that do arrive as known request errors.
+    const name = (error as { name?: string } | null)?.name;
+    const code = (error as { code?: string } | null)?.code;
+    const isConnectionFailure =
+      name === 'PrismaClientInitializationError' ||
+      code === 'P1001' ||
+      code === 'P1002' ||
+      code === 'P1017';
+
+    if (isConnectionFailure) {
+      logger.warn('alert sweep: database unreachable', { name, code });
+      throw new Error('Database unreachable; the sweep will retry with backoff.');
+    }
+    throw error;
+  }
+}
+
 export async function evaluateAlerts(job: Job): Promise<{ evaluated: number; fired: number }> {
   if (!isDatabaseConfigured) {
     logger.warn('alert sweep skipped: no DATABASE_URL configured');
@@ -87,17 +135,7 @@ export async function evaluateAlerts(job: Job): Promise<{ evaluated: number; fir
 
   const { asset } = job.data as { asset?: { symbol: string; kind: string } };
 
-  const alerts = await prisma.alert.findMany({
-    where: {
-      enabled: true,
-      ...(asset ? { asset: { symbol: asset.symbol } } : {}),
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-    },
-    include: {
-      asset: { select: { symbol: true, kind: true, name: true } },
-      user: { select: { id: true, email: true } },
-    },
-  });
+  const alerts = await findAlerts(asset);
 
   // Grouped by asset so one price fetch serves every rule on it. Fetching per
   // alert would multiply provider load by however many rules a popular asset has.

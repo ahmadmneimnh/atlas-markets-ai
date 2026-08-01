@@ -113,6 +113,22 @@ export function TradingViewChart({
     );
   }
 
+  if (status === 'failed') {
+    // The empty frame is collapsed rather than left in place. A 420px void reads
+    // as a broken page; a stated reason reads as a known limitation, which is
+    // what it is — and it is the same treatment every other unavailable panel
+    // gets.
+    return (
+      <div className="rounded-xl border border-dashed border-glass-border/70 px-6 py-10 text-center">
+        <p className="text-sm text-ink-muted">Chart unavailable</p>
+        <p className="mt-1 text-xs text-ink-faint">
+          TradingView&apos;s widget script could not be loaded — usually a blocked network, an
+          extension, or a Content-Security-Policy that omits its origin.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div
@@ -123,7 +139,6 @@ export function TradingViewChart({
       <p className="mt-2 text-xs text-ink-faint">
         Chart data: TradingView ({tvSymbol}) — an independent source from the quotes and scores
         above, so closes may differ slightly.
-        {status === 'failed' ? ' The widget failed to load.' : ''}
       </p>
     </div>
   );

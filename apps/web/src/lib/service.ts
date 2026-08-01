@@ -7,6 +7,9 @@ import { scoreAsset, InsufficientDataError } from './analysis/engine';
 import type { AssetContext, AssetScore } from './analysis/types';
 import type { AssetRef, Quote, ProviderResult } from './providers/types';
 import { log } from './logger';
+import { configuredProviders } from '@/lib/env';
+import { CRYPTO_UNIVERSE, UNIVERSE } from '@/lib/universe';
+import { scan, type ScannerInput, type ScannerResult } from '@/lib/scanner/rank';
 
 /**
  * Application service: assembles an AssetContext from the provider registry and
@@ -160,3 +163,57 @@ export const detail = {
   institutionalOwnership: (symbol: string) => finnhubExtras.institutionalOwnership(symbol),
   chainTvl: (symbol: string) => defillama.chainTvl(symbol),
 };
+
+/**
+ * The market scanner.
+ *
+ * Scores the tracked universe and ranks it into buy / hold / sell lists. Sits in
+ * the service layer so the homepage, the API route and any future consumer share
+ * one implementation and one cache entry — scoring the universe is the most
+ * expensive thing this application does, and doing it twice per page load would
+ * be the easiest possible way to exhaust a provider quota.
+ *
+ * The cache TTL matches the score TTL: a scan is only as fresh as the scores it
+ * ranks, and caching it for longer would report a stale ordering as current.
+ */
+export async function runScanner(
+  kind: 'equity' | 'crypto' | 'all' = 'all',
+  limit = 5,
+): Promise<ScannerResult> {
+  const providers = configuredProviders();
+  const hasEquityProvider = providers['finnhub'] || providers['twelvedata'] || providers['polygon'];
+
+  const universe =
+    kind === 'crypto'
+      ? CRYPTO_UNIVERSE
+      : kind === 'equity'
+        ? UNIVERSE.filter((entry) => entry.kind === 'equity')
+        : UNIVERSE;
+
+  const refs = hasEquityProvider || kind === 'crypto' ? universe : CRYPTO_UNIVERSE;
+
+  return cached(
+    cacheKey('scanner', kind, limit),
+    TTL.score,
+    async () => {
+      const results = await scoreMany(refs, 4);
+
+      const inputs: ScannerInput[] = results.flatMap((entry) => {
+        if (!entry.result.ok) return [];
+        const outcome = entry.result;
+        const known = UNIVERSE.find(
+          (u) => u.symbol === entry.ref.symbol && u.kind === entry.ref.kind,
+        );
+        const item: ScannerInput = { name: known?.name ?? entry.ref.symbol, score: outcome.score };
+        if (outcome.quote) item.quote = outcome.quote;
+        return [item];
+      });
+
+      return scan(inputs, refs.length, limit);
+    },
+    // A scan is cached for as long as the scores it ranks. There is no separate
+    // failure TTL: `scan` always returns a result, reporting an empty list with
+    // its coverage rather than throwing.
+    () => TTL.score,
+  );
+}

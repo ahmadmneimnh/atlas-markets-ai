@@ -1,6 +1,8 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
 
 import { GlobalSearch } from '@/components/search/global-search';
+import { TopOpportunities, TopOpportunitiesSkeleton } from '@/components/home/top-opportunities';
 
 /**
  * The landing page.
@@ -10,10 +12,10 @@ import { GlobalSearch } from '@/components/search/global-search';
  * scored universe — moved to `/stocks` and `/crypto` behind the cards, so
  * nothing was removed, only relocated behind a decision the visitor makes first.
  *
- * `force-dynamic` is deliberately NOT set. This page fetches nothing, so it
- * prerenders to static HTML and the search field is interactive the instant it
- * paints — where the old dashboard had to score the whole universe before it
- * could show anything at all.
+ * Today's Top Opportunities is streamed inside a Suspense boundary rather than
+ * awaited inline. Scoring the universe against live providers takes seconds; the
+ * search field needs nothing at all. Awaiting the scan before painting would
+ * block the one control this page exists for behind the slowest thing it does.
  */
 export const metadata = {
   title: 'Atlas Markets AI — Search any stock or cryptocurrency',
@@ -36,8 +38,8 @@ const CARDS = [
 
 export default function HomePage() {
   return (
-    <div className="mx-auto flex min-h-[72vh] max-w-3xl flex-col justify-center py-12">
-      <div className="animate-fade-up text-center">
+    <div className="mx-auto max-w-6xl py-12">
+      <div className="mx-auto max-w-3xl animate-fade-up text-center">
         <div className="mb-6 flex justify-center">
           <svg width="56" height="56" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M12 2 3 20h4l5-10 5 10h4L12 2Z" fill="url(#atlas-hero)" />
@@ -59,7 +61,7 @@ export default function HomePage() {
         </p>
       </div>
 
-      <div className="mt-10 animate-fade-up">
+      <div className="mx-auto mt-10 max-w-3xl animate-fade-up">
         {/* autoFocus is right here and nowhere else: this page exists to be
             typed into, so the caret belongs in the field. On a page with other
             content it would steal focus from a screen reader's landmark. */}
@@ -72,7 +74,7 @@ export default function HomePage() {
         </p>
       </div>
 
-      <div className="mt-12 grid animate-fade-up gap-5 sm:grid-cols-2">
+      <div className="mx-auto mt-12 grid max-w-3xl animate-fade-up gap-5 sm:grid-cols-2">
         {CARDS.map((card) => (
           <Link
             key={card.href}
@@ -104,6 +106,21 @@ export default function HomePage() {
           </Link>
         ))}
       </div>
+
+      <section className="mt-16">
+        <div className="mb-6 text-center">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Today&apos;s <span className="gold-text">Top Opportunities</span>
+          </h2>
+          <p className="mt-1.5 text-xs text-ink-muted">
+            Ranked by AI score from live provider data — never estimated, never filled in
+          </p>
+        </div>
+
+        <Suspense fallback={<TopOpportunitiesSkeleton />}>
+          <TopOpportunities />
+        </Suspense>
+      </section>
     </div>
   );
 }

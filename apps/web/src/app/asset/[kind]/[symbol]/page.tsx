@@ -4,6 +4,10 @@ import { market } from '@/lib/providers/registry';
 import { findAsset } from '@/lib/universe';
 import { ScoreExplanation } from '@/components/score-card';
 import { RiskPanel } from '@/components/risk-panel';
+import { AssetHeader } from '@/components/detail/asset-header';
+import { AiAnalysis } from '@/components/detail/ai-analysis';
+import { NewsSummaryPanel } from '@/components/detail/news-summary';
+import { buildNewsSummary } from '@/lib/analysis/news-summary';
 import {
   Card,
   SectionTitle,
@@ -79,74 +83,102 @@ export default async function AssetPage({
 
   return (
     <div className="space-y-8 animate-fade-up">
-      {/* Header */}
-      <section className="flex flex-wrap items-start justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight">{symbol}</h1>
-            <span className="rounded-md border border-glass-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-ink-faint">
-              {ref.market}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-ink-muted">{name}</p>
-        </div>
-
-        {quote ? (
-          <div className="text-right">
-            <div className="tnum text-3xl font-semibold">
-              {quote.currency === 'USD' || quote.currency === 'USDT' ? '$' : ''}
-              {formatPrice(quote.price)}
+      {/*
+        The decision, always visible and above everything else: name, live price,
+        recommendation, confidence, AI score, last updated. A reader who came to
+        decide should not have to scroll or expand anything to do it.
+      */}
+      {outcome.ok ? (
+        <AssetHeader
+          name={name}
+          symbol={symbol}
+          market={ref.market}
+          score={outcome.score}
+          {...(quote ? { quote } : {})}
+        />
+      ) : (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl font-semibold tracking-tight">{symbol}</h1>
+                <span className="rounded-md border border-glass-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-ink-faint">
+                  {ref.market}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-ink-muted">{name}</p>
             </div>
-            <div className="mt-1 flex items-center justify-end gap-3">
-              <Delta value={quote.changePercent} />
-              <Provenance source={quote.source} asOf={quote.asOf} />
-            </div>
+            {quote ? (
+              <div className="text-right">
+                <div className="tnum text-3xl font-semibold">{formatPrice(quote.price)}</div>
+                <div className="mt-1 flex items-center justify-end gap-3">
+                  <Delta value={quote.changePercent} />
+                  <Provenance source={quote.source} asOf={quote.asOf} />
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-ink-faint">Price unavailable</p>
+            )}
           </div>
-        ) : (
-          <p className="text-sm text-ink-faint">Price unavailable</p>
-        )}
-      </section>
 
-      {/* Quote detail */}
-      {quote ? (
-        <Card className="grid grid-cols-2 gap-px overflow-hidden bg-glass-border/40 sm:grid-cols-4">
-          <Stat label="Open" value={quote.open} />
-          <Stat label="High" value={quote.high} />
-          <Stat label="Low" value={quote.low} />
-          <Stat label="Prev close" value={quote.previousClose} />
-        </Card>
-      ) : null}
+          <Unavailable
+            title="No recommendation could be produced"
+            reason={outcome.message}
+            hint="A score is withheld rather than estimated when coverage is insufficient."
+          />
+          {outcome.omitted && outcome.omitted.length > 0 ? (
+            <Card className="divide-y divide-glass-border/50">
+              {outcome.omitted.map((o) => (
+                <div key={o.factor} className="p-4">
+                  <p className="text-sm font-medium capitalize text-ink-muted">{o.factor}</p>
+                  <p className="mt-0.5 text-xs text-ink-faint">{o.reason}</p>
+                </div>
+              ))}
+            </Card>
+          ) : null}
+        </section>
+      )}
 
-      {/* Recommendation */}
-      <section>
-        <SectionTitle hint="every figure attributed to its provider">
-          AI recommendation
-        </SectionTitle>
-        {outcome.ok ? (
-          <div className="space-y-8">
-            <ScoreExplanation score={outcome.score} />
-            <RiskPanel risk={outcome.score.risk} />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <Unavailable
-              title="No recommendation could be produced"
-              reason={outcome.message}
-              hint="A score is withheld rather than estimated when coverage is insufficient."
+      {/*
+        Everything explaining the number is collapsed behind one click. The
+        breakdown has not been removed or thinned — it is the same six-factor
+        explanation with the same citations, just no longer the first thing
+        between a reader and their decision.
+      */}
+      {outcome.ok ? (
+        <AiAnalysis
+          factorCount={outcome.score.breakdown.length}
+          omittedCount={outcome.score.omitted.length}
+        >
+          <ScoreExplanation score={outcome.score} />
+          <RiskPanel risk={outcome.score.risk} />
+
+          <section>
+            <SectionTitle hint="derived from classified headlines, not generated prose">
+              Market summary
+            </SectionTitle>
+            <NewsSummaryPanel
+              summary={buildNewsSummary(
+                outcome.score.breakdown,
+                news.ok ? news.data : [],
+                outcome.score.omitted,
+              )}
             />
-            {outcome.omitted && outcome.omitted.length > 0 ? (
-              <Card className="divide-y divide-glass-border/50">
-                {outcome.omitted.map((o) => (
-                  <div key={o.factor} className="p-4">
-                    <p className="text-sm font-medium capitalize text-ink-muted">{o.factor}</p>
-                    <p className="mt-0.5 text-xs text-ink-faint">{o.reason}</p>
-                  </div>
-                ))}
+          </section>
+
+          {quote ? (
+            <section>
+              <SectionTitle>Session</SectionTitle>
+              <Card className="grid grid-cols-2 gap-px overflow-hidden bg-glass-border/40 sm:grid-cols-4">
+                <Stat label="Open" value={quote.open} />
+                <Stat label="High" value={quote.high} />
+                <Stat label="Low" value={quote.low} />
+                <Stat label="Prev close" value={quote.previousClose} />
               </Card>
-            ) : null}
-          </div>
-        )}
-      </section>
+            </section>
+          ) : null}
+        </AiAnalysis>
+      ) : null}
 
       {/* Profile */}
       {profile?.ok ? (
@@ -367,12 +399,20 @@ export default async function AssetPage({
         </div>
       )}
 
-      {/* News */}
-      <section>
-        <SectionTitle hint="classified by the news factor">Latest news</SectionTitle>
-        {news.ok && news.data.length > 0 ? (
+      {/*
+        The scrolling news feed is gone. It has been replaced by the market
+        summary inside the AI analysis — which is derived from the classifier's
+        measurements rather than written about the headlines — and by these
+        links, so every claim in that summary can be checked against its source.
+        A feed of twenty headlines is reading material; this is evidence.
+      */}
+      {!outcome.ok && news.ok && news.data.length > 0 ? (
+        <section>
+          <SectionTitle hint="no score was produced, so the headlines are shown unclassified">
+            Recent headlines
+          </SectionTitle>
           <Card className="divide-y divide-glass-border/50">
-            {news.data.map((a) => (
+            {news.data.slice(0, 6).map((a) => (
               <a
                 key={a.id}
                 href={a.url}
@@ -390,17 +430,8 @@ export default async function AssetPage({
               </a>
             ))}
           </Card>
-        ) : (
-          <Unavailable
-            title="No news available"
-            reason={
-              news.ok
-                ? 'The provider returned no articles for this asset in the last 14 days.'
-                : `Provider unavailable: ${news.reason}${news.detail ? ` — ${news.detail}` : ''}`
-            }
-          />
-        )}
-      </section>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,7 @@
 import { market } from './providers/registry';
+import { fmpExtras } from '@/lib/providers/equity/fmp';
+import { finnhubExtras } from '@/lib/providers/equity/finnhub';
+import { defillama } from '@/lib/providers/crypto/defillama';
 import { cached, cacheKey, TTL } from './cache';
 import { scoreAsset, InsufficientDataError } from './analysis/engine';
 import type { AssetContext, AssetScore } from './analysis/types';
@@ -119,3 +122,27 @@ export async function scoreMany(
   }
   return out;
 }
+
+/**
+ * Detail-page data that is not a routed capability.
+ *
+ * Financial statements, insider filings, ownership and TVL each have exactly one
+ * possible provider, so they are not worth a `Capability` — a fallthrough list of
+ * length one is a function call wearing a costume.
+ *
+ * They are re-exported through the service layer rather than imported directly by
+ * pages, because the layering rule (`no-restricted-imports` in eslint.config.mjs)
+ * is what keeps adapter modules — and the API keys they read — out of anything
+ * that could become a client component. The rule caught this exact import when
+ * the detail page first reached for the adapters, which is the rule working.
+ */
+export const detail = {
+  incomeStatement: (symbol: string, periods = 5) => fmpExtras.incomeStatement(symbol, periods),
+  balanceSheet: (symbol: string, periods = 5) => fmpExtras.balanceSheet(symbol, periods),
+  cashFlow: (symbol: string, periods = 5) => fmpExtras.cashFlow(symbol, periods),
+  priceTarget: (symbol: string) => fmpExtras.priceTarget(symbol),
+  analystRatings: (symbol: string) => fmpExtras.analystRatings(symbol),
+  insiderTransactions: (symbol: string) => finnhubExtras.insiderTransactions(symbol),
+  institutionalOwnership: (symbol: string) => finnhubExtras.institutionalOwnership(symbol),
+  chainTvl: (symbol: string) => defillama.chainTvl(symbol),
+};

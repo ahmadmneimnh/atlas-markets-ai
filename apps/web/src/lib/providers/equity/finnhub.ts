@@ -347,3 +347,138 @@ export const finnhub: Provider = {
 
 // Re-exported for adapters that need the same error taxonomy.
 export { HttpError, RateLimitedError, CircuitOpenError };
+
+/**
+ * Ownership and insider activity.
+ *
+ * Kept outside the `Provider` contract for the same reason as FMP's statements:
+ * Finnhub is the only configured source, so a routed capability would have a
+ * fallthrough list of length one. The detail page calls these directly and
+ * renders an explicit unavailable state when no key is set.
+ *
+ * Both endpoints are premium on Finnhub's pricing. A free key gets HTTP 403 or a
+ * 200 with an empty array depending on the endpoint, and both are reported as
+ * `not_supported` with the reason rather than as "this company has no insider
+ * activity" — which is what an empty list on screen would mean to a reader.
+ */
+export interface InsiderTransaction {
+  name: string;
+  share: number;
+  change: number;
+  filingDate: Date;
+  transactionDate: Date;
+  transactionPrice?: number;
+  transactionCode?: string;
+  source: string;
+}
+
+export interface InstitutionalHolder {
+  name: string;
+  share: number;
+  change: number;
+  filingDate: Date;
+  portfolioPercent?: number;
+  source: string;
+}
+
+interface FinnhubInsiderResponse {
+  data?: {
+    name: string;
+    share: number;
+    change: number;
+    filingDate: string;
+    transactionDate: string;
+    transactionPrice?: number;
+    transactionCode?: string;
+  }[];
+}
+
+interface FinnhubOwnershipResponse {
+  ownership?: {
+    name: string;
+    share: number;
+    change: number;
+    filingDate: string;
+    portfolioPercent?: number;
+  }[];
+}
+
+export const finnhubExtras = {
+  isConfigured: () => Boolean(env.providers.finnhub),
+
+  async insiderTransactions(symbol: string): Promise<ProviderResult<InsiderTransaction[]>> {
+    if (!env.providers.finnhub) {
+      return unavailable('no_provider_configured', 'FINNHUB_API_KEY is not set');
+    }
+    try {
+      const r = await fetchJson<FinnhubInsiderResponse>({
+        provider: 'finnhub',
+        url: url('/stock/insider-transactions', { symbol }),
+        rateLimit: LIMIT,
+      });
+
+      const rows = r?.data ?? [];
+      if (rows.length === 0) {
+        return unavailable(
+          'not_supported',
+          'Finnhub returned no insider filings. This endpoint requires a premium plan; an empty result does not mean there was no insider activity.',
+        );
+      }
+
+      return ok(
+        rows.slice(0, 20).map((row) => {
+          const tx: InsiderTransaction = {
+            name: row.name,
+            share: row.share,
+            change: row.change,
+            filingDate: new Date(`${row.filingDate}T00:00:00Z`),
+            transactionDate: new Date(`${row.transactionDate}T00:00:00Z`),
+            source: 'finnhub',
+          };
+          setNumber(tx, 'transactionPrice', row.transactionPrice);
+          if (row.transactionCode) tx.transactionCode = row.transactionCode;
+          return tx;
+        }),
+      );
+    } catch (e) {
+      return classifyError(e);
+    }
+  },
+
+  async institutionalOwnership(symbol: string): Promise<ProviderResult<InstitutionalHolder[]>> {
+    if (!env.providers.finnhub) {
+      return unavailable('no_provider_configured', 'FINNHUB_API_KEY is not set');
+    }
+    try {
+      const r = await fetchJson<FinnhubOwnershipResponse>({
+        provider: 'finnhub',
+        url: url('/stock/institutional-ownership', { symbol, from: '', to: '' }),
+        rateLimit: LIMIT,
+      });
+
+      const rows = r?.ownership ?? [];
+      if (rows.length === 0) {
+        return unavailable(
+          'not_supported',
+          'Finnhub returned no institutional holdings. This endpoint requires a premium plan.',
+        );
+      }
+
+      return ok(
+        rows.slice(0, 20).map((row) => {
+          const holder: InstitutionalHolder = {
+            name: row.name,
+            share: row.share,
+            change: row.change,
+            filingDate: new Date(`${row.filingDate}T00:00:00Z`),
+            source: 'finnhub',
+          };
+          setNumber(holder, 'portfolioPercent', row.portfolioPercent);
+          return holder;
+        }),
+      );
+    } catch (e) {
+      return classifyError(e);
+    }
+  },
+};

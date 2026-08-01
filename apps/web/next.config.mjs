@@ -1,8 +1,31 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { loadWorkspaceEnv } from './load-workspace-env.mjs';
+
 // Repository root, two levels up from apps/web.
 const workspaceRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+/**
+ * Load the repository-root `.env` before anything below reads `process.env`.
+ *
+ * See ./load-workspace-env.mjs for why this is necessary and what the precedence
+ * rules are. In short: Next resolves `.env` against `apps/web`, so the root file
+ * this project documents as its single source of configuration was never read,
+ * and every keyed provider silently reported itself unconfigured.
+ *
+ * Next evaluates this config in both the CLI and the server process, so the
+ * banner is printed once rather than on each pass.
+ */
+const ENV_BANNER_MARKER = '__ATLAS_ROOT_ENV_ANNOUNCED';
+loadWorkspaceEnv(workspaceRoot, {
+  log: (message) => {
+    if (process.env[ENV_BANNER_MARKER] === '1') return;
+    process.env[ENV_BANNER_MARKER] = '1';
+    console.log(message);
+  },
+  warn: (message) => console.warn(message),
+});
 
 /**
  * Whether this deployment is actually served over HTTPS.

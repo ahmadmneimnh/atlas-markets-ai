@@ -306,6 +306,16 @@ export interface Unavailable {
   detail?: string;
   /** Providers that were tried, for diagnostics. */
   tried?: string[];
+  /**
+   * Providers that implement the capability but hold no credentials, so were
+   * never called.
+   *
+   * Distinct from `tried` on purpose. "Finnhub failed" and "Finnhub was never
+   * asked because it has no key" are different problems with different fixes,
+   * and collapsing them is what lets a missing API key masquerade as a vendor
+   * outage.
+   */
+  skipped?: string[];
 }
 
 export interface Available<T> {

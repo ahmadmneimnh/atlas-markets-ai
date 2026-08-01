@@ -113,8 +113,18 @@ function envOverride(cap: Capability): string[] {
   }
 }
 
-/** Configured providers implementing `cap`, in resolution order. */
-function candidates(cap: Capability): Provider[] {
+/**
+ * Providers implementing `cap`, split into those that can be called and those
+ * that were skipped for want of credentials.
+ *
+ * The skipped list is returned rather than silently dropped, and that is not
+ * bookkeeping. Filtering unconfigured providers out invisibly is what makes a
+ * missing API key present as a vendor problem: the preferred provider vanishes
+ * from consideration without comment, an unauthenticated fallback answers
+ * instead, and the only thing reaching the logs is that fallback rate-limiting.
+ * Naming the skipped provider turns a two-hour investigation into one log line.
+ */
+function candidates(cap: Capability): { usable: Provider[]; unconfigured: string[] } {
   const order = envOverride(cap).length > 0 ? envOverride(cap) : (DEFAULT_ORDER[cap] ?? []);
   const byId = new Map(ALL.map((p) => [p.id, p]));
 
@@ -126,7 +136,11 @@ function candidates(cap: Capability): Provider[] {
   // appended, so a newly added adapter is usable before anyone updates config.
   const extras = ALL.filter((p) => p.capabilities.includes(cap) && !ranked.includes(p));
 
-  return [...ranked, ...extras].filter((p) => p.isConfigured());
+  const all = [...ranked, ...extras];
+  return {
+    usable: all.filter((p) => p.isConfigured()),
+    unconfigured: all.filter((p) => !p.isConfigured()).map((p) => p.id),
+  };
 }
 
 /**
@@ -140,15 +154,23 @@ async function resolve<T>(
   cap: Capability,
   invoke: (p: Provider) => Promise<ProviderResult<T>> | undefined,
 ): Promise<ProviderResult<T>> {
-  const providers = candidates(cap);
-  if (providers.length === 0) {
-    return unavailable('no_provider_configured', `no configured provider implements "${cap}"`);
+  const { usable, unconfigured } = candidates(cap);
+
+  if (usable.length === 0) {
+    // Naming the providers that *would* have served this is the difference
+    // between "the feature is broken" and "set one of these keys".
+    const detail =
+      unconfigured.length > 0
+        ? `no configured provider implements "${cap}" — ${unconfigured.join(', ')} ` +
+          `${unconfigured.length === 1 ? 'implements' : 'implement'} it but ${unconfigured.length === 1 ? 'has' : 'have'} no credentials`
+        : `no configured provider implements "${cap}"`;
+    return { ...unavailable('no_provider_configured', detail), skipped: unconfigured };
   }
 
   const tried: string[] = [];
   let last: Unavailable = unavailable('upstream_error', 'no provider attempted');
 
-  for (const p of providers) {
+  for (const p of usable) {
     const call = invoke(p);
     if (!call) continue;
     tried.push(p.id);
@@ -159,10 +181,18 @@ async function resolve<T>(
     last = result;
     if (result.reason === 'not_found') break;
 
-    log.warn('provider_fallthrough', { capability: cap, provider: p.id, reason: result.reason });
+    log.warn('provider_fallthrough', {
+      capability: cap,
+      provider: p.id,
+      reason: result.reason,
+      // Carried on the fallthrough itself: when the last usable provider fails,
+      // this line is the one a reader sees, and it should already answer "why
+      // was my preferred vendor not used".
+      ...(unconfigured.length > 0 ? { unconfigured } : {}),
+    });
   }
 
-  return { ...last, tried };
+  return { ...last, tried, ...(unconfigured.length > 0 ? { skipped: unconfigured } : {}) };
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────────
@@ -259,11 +289,21 @@ export const market = {
   async search(query: string): Promise<ProviderResult<SearchHit[]>> {
     // Search fans out rather than falling through: equity and crypto results come
     // from different vendors and the user wants both in one list.
-    const providers = candidates('search');
-    if (providers.length === 0) return unavailable('no_provider_configured', 'no search provider');
+    const { usable, unconfigured } = candidates('search');
+    if (usable.length === 0) {
+      return {
+        ...unavailable(
+          'no_provider_configured',
+          unconfigured.length > 0
+            ? `no search provider configured — ${unconfigured.join(', ')} implement search but hold no credentials`
+            : 'no search provider',
+        ),
+        skipped: unconfigured,
+      };
+    }
 
     const results = await Promise.all(
-      providers.map((p) => p.search?.(query) ?? Promise.resolve(null)),
+      usable.map((p) => p.search?.(query) ?? Promise.resolve(null)),
     );
     const hits = results.flatMap((r) => (r && r.ok ? r.data : []));
 

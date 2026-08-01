@@ -52,6 +52,7 @@ export function InsufficientData({
   unavailable,
   what,
   hint,
+  message,
   compact = false,
 }: {
   unavailable?: UnavailableDTO | null;
@@ -59,6 +60,12 @@ export function InsufficientData({
   what?: string;
   /** Concrete next step, e.g. an env var to set. */
   hint?: ReactNode;
+  /**
+   * Overrides the generic wording derived from `unavailable.reason`. Used where the
+   * caller knows more than the reason code does — a scan that analysed nothing is
+   * not "the data source does not recognise this symbol".
+   */
+  message?: string;
   compact?: boolean;
 }) {
   if (compact) {
@@ -78,7 +85,7 @@ export function InsufficientData({
       <p className="text-sm font-semibold text-ink">Insufficient Data</p>
       <p className="mt-1.5 max-w-md text-xs leading-relaxed text-ink-muted">
         {what ? <span className="text-ink-muted">{what}: </span> : null}
-        {explainUnavailable(unavailable)}
+        {message ?? explainUnavailable(unavailable)}
       </p>
       {hint ? <div className="mt-3 text-xs text-ink-faint">{hint}</div> : null}
     </div>

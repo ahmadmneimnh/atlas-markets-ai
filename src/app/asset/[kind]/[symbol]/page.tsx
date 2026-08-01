@@ -1,5 +1,11 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
+import { analyseAsset } from '@/lib/analysis/engine';
+import { AnalysisCard, AnalysisUnavailableCard } from '@/components/analysis/analysis-card';
+import { RecommendationCard } from '@/components/analysis/recommendation-card';
+import { ExplanationCard } from '@/components/analysis/explanation-card';
+import { RiskCard } from '@/components/analysis/risk-card';
 import { market } from '@/lib/providers/registry';
 import { findAsset } from '@/lib/universe';
 import { toQuoteDTO, toUnavailableDTO } from '@/lib/dto';
@@ -96,6 +102,12 @@ export default async function AssetPage({
         />
       </Card>
 
+      {/* Streamed in: the engine makes several provider calls, and the price, chart
+          and statistics above must not wait on them. */}
+      <Suspense fallback={<AnalysisSkeleton />}>
+        <AnalysisSection symbol={symbol} kind={kind} name={name} />
+      </Suspense>
+
       <Card className="p-5">
         <PriceChart symbol={symbol} kind={kind} />
       </Card>
@@ -151,5 +163,56 @@ export default async function AssetPage({
         ) : null}
       </section>
     </div>
+  );
+}
+
+/**
+ * The Phase 2 engine output. Rendered as its own async component so the page can
+ * stream: everything above paints as soon as the quote resolves, and this section
+ * fills in when the analysis completes.
+ */
+async function AnalysisSection({
+  symbol,
+  kind,
+  name,
+}: {
+  symbol: string;
+  kind: AssetKind;
+  name: string;
+}) {
+  const analysis = await analyseAsset({ symbol, kind, name });
+
+  if (!analysis.available) {
+    return (
+      <AnalysisUnavailableCard modules={analysis.modules} detail={analysis.unavailable.detail} />
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <RecommendationCard rec={analysis} />
+      <ExplanationCard rec={analysis} />
+      <AnalysisCard rec={analysis} />
+      <RiskCard rec={analysis} />
+    </div>
+  );
+}
+
+function AnalysisSkeleton() {
+  return (
+    <section>
+      <SectionTitle>Recommendation</SectionTitle>
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="skeleton h-[132px] w-[132px] rounded-full" />
+          <div className="min-w-[240px] flex-1 space-y-3">
+            <div className="skeleton h-6 w-32" />
+            <div className="skeleton h-3 w-full" />
+            <div className="skeleton h-2.5 w-full rounded-full" />
+          </div>
+        </div>
+        <p className="mt-4 text-xs text-ink-faint">Running the analysis modules…</p>
+      </Card>
+    </section>
   );
 }

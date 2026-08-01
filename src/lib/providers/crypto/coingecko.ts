@@ -1,7 +1,7 @@
 import { env } from '@/lib/env';
 import { fetchJson } from '@/lib/http';
 import type {
-  Provider, ProviderResult, Quote, CryptoMetrics, SearchHit, OhlcvSeries, Candle,
+  Provider, ProviderResult, Quote, CryptoMetrics, CryptoGlobal, SearchHit, OhlcvSeries, Candle,
 } from '../types';
 import { ok, unavailable } from '../types';
 import { classifyError } from '../errors';
@@ -79,7 +79,7 @@ async function resolveId(symbol: string): Promise<string | null> {
 export const coingecko: Provider = {
   id: 'coingecko',
   label: 'CoinGecko',
-  capabilities: ['crypto.quote', 'crypto.metrics', 'crypto.ohlcv', 'search'],
+  capabilities: ['crypto.quote', 'crypto.metrics', 'crypto.ohlcv', 'crypto.global', 'search'],
 
   // Public tier requires no credential, so this provider is always available.
   isConfigured: () => true,
@@ -174,6 +174,50 @@ export const coingecko: Provider = {
         symbol: symbol.toUpperCase(),
         interval: '1d',
         candles: candles.slice(-limitCount),
+        source: 'coingecko',
+        asOf: new Date(),
+      });
+    } catch (e) {
+      return classifyError(e);
+    }
+  },
+
+  async cryptoGlobal(): Promise<ProviderResult<CryptoGlobal>> {
+    try {
+      const r = await fetchJson<{
+        data?: {
+          total_market_cap?: Record<string, number>;
+          total_volume?: Record<string, number>;
+          market_cap_percentage?: Record<string, number>;
+          market_cap_change_percentage_24h_usd?: number;
+        };
+      }>({
+        provider: 'coingecko',
+        url: `${base()}/global`,
+        headers: headers(),
+        rateLimit: limit(),
+      });
+
+      const d = r.data;
+      const cap = d?.total_market_cap?.['usd'];
+      const vol = d?.total_volume?.['usd'];
+      const btc = d?.market_cap_percentage?.['btc'];
+      const change = d?.market_cap_change_percentage_24h_usd;
+
+      // All four are required: a partially-populated aggregate would let a missing
+      // denominator turn into a dominance figure that looks real.
+      if (
+        typeof cap !== 'number' || typeof vol !== 'number' ||
+        typeof btc !== 'number' || typeof change !== 'number'
+      ) {
+        return unavailable('not_found', 'global market aggregates were incomplete');
+      }
+
+      return ok({
+        totalMarketCap: cap,
+        totalVolume24h: vol,
+        btcDominance: btc,
+        marketCapChange24h: change,
         source: 'coingecko',
         asOf: new Date(),
       });

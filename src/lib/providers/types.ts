@@ -119,6 +119,18 @@ export interface CryptoMetrics {
   asOf: Date;
 }
 
+/** Whole-market crypto aggregates, used for dominance and market regime. */
+export interface CryptoGlobal {
+  totalMarketCap: number;
+  totalVolume24h: number;
+  /** Bitcoin's share of total market capitalisation, as a percentage. */
+  btcDominance: number;
+  /** Change in total market capitalisation over 24h, as a percentage. */
+  marketCapChange24h: number;
+  source: string;
+  asOf: Date;
+}
+
 export interface NewsArticle {
   id: string;
   headline: string;
@@ -188,6 +200,7 @@ export type Capability =
   | 'crypto.quote'
   | 'crypto.ohlcv'
   | 'crypto.metrics'
+  | 'crypto.global'
   | 'search';
 
 /**
@@ -209,5 +222,6 @@ export interface Provider {
   news?(symbol: string | null, limit: number): Promise<ProviderResult<NewsArticle[]>>;
   cryptoQuote?(symbol: string): Promise<ProviderResult<Quote>>;
   cryptoMetrics?(symbol: string): Promise<ProviderResult<CryptoMetrics>>;
+  cryptoGlobal?(): Promise<ProviderResult<CryptoGlobal>>;
   search?(query: string): Promise<ProviderResult<SearchHit[]>>;
 }

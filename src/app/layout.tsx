@@ -27,6 +27,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </span>
             </Link>
 
+            <nav className="hidden items-center gap-1 sm:flex">
+              <NavLink href="/">Dashboard</NavLink>
+              <NavLink href="/scanner">Scanner</NavLink>
+            </nav>
+
             <SearchBox className="ml-auto w-full max-w-xs sm:max-w-sm" />
             <ThemeToggle />
           </div>
@@ -36,6 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <footer className="mt-12 border-t border-line py-8">
           <div className="mx-auto max-w-[1200px] space-y-2 px-4 text-xs leading-relaxed text-ink-faint sm:px-6">
+            {/* The header nav is hidden on narrow screens, so these are how a phone
+                reaches the scanner. */}
+            <nav className="flex gap-4 pb-2 sm:hidden">
+              <Link href="/" className="text-ink-muted hover:text-ink">Dashboard</Link>
+              <Link href="/scanner" className="text-ink-muted hover:text-ink">Scanner</Link>
+            </nav>
             <p>
               <strong className="text-ink-muted">Batal&apos;s Brain</strong> — market data for
               research and information only. Not investment advice.
@@ -49,6 +60,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </footer>
       </body>
     </html>
+  );
+}
+
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-lg px-2.5 py-1.5 text-sm text-ink-muted transition-colors hover:bg-canvas hover:text-ink"
+    >
+      {children}
+    </Link>
   );
 }
 

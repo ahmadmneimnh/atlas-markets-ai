@@ -4,13 +4,15 @@ A live market dashboard for cryptocurrency and stocks. Prices, search, asset pag
 and interactive charts — all from real market data providers, refreshed
 automatically.
 
-**This is Phase 1: the market data system.** There is deliberately no AI analysis,
-scoring or recommendation anywhere in this app yet. That comes in Phase 2, once the
-data layer is proven.
+**Phase 1 (market data) and Phase 2 (the analysis engine) are both in.** The engine
+does not predict prices: it measures what the data says, weighs the evidence, and
+shows every number behind the verdict.
 
 ---
 
 ## What it does
+
+### Phase 1 — market data
 
 | Feature | Where | Data source |
 | --- | --- | --- |
@@ -23,9 +25,35 @@ data layer is proven.
 | Automatic refresh | Everywhere | every 15–30 seconds |
 | Dark and light mode | Button, top right | remembered in your browser |
 
+### Phase 2 — analysis engine
+
+| Feature | Where | Built from |
+| --- | --- | --- |
+| Buy / Hold / Sell recommendation | Asset page | weighted score across four modules |
+| Conviction score, 0–100 | Asset page | the same weighted score |
+| Buy / Hold / Sell percentages | Asset page | module votes, damped by confidence; always total 100 |
+| Confidence rating | Asset page | data coverage, input completeness, module agreement |
+| Entry zone, stop loss, target | Asset page | ATR(14) and 120-day pivot levels |
+| Investment horizon | Asset page | volatility, trend strength, fundamentals |
+| Risk classification | Asset page | volatility, drawdown, ATR, market cap |
+| Evidence: reasons and warnings | Asset page | every line is a measured value from a module |
+| Market scanner | `/scanner` | the same engine across every tracked asset |
+
+The four modules and their nominal weights: **Technical 40%**, **Fundamentals 30%**,
+**Market conditions 20%**, **News sentiment 10%**. A module that cannot get its data
+does not vote — its weight is redistributed to the modules that did report, and the
+confidence rating falls. If less than half the weighting is available, no verdict is
+issued at all.
+
 **One rule this app follows everywhere:** it never makes a number up. If a data
 source is missing, rate-limited or down, you see **"Insufficient Data"** and a plain
-explanation of why — never a zero, a placeholder or an estimate.
+explanation of why — never a zero, a placeholder or an estimate. That applies to the
+analysis too: an unmeasurable risk is not "Low Risk", and news that was never read is
+not "neutral sentiment".
+
+> Recommendations are algorithmic readings of public market data for research and
+> information. They are not investment advice, and the suggested levels are
+> arithmetic on measured volatility — not forecasts.
 
 ---
 
@@ -148,7 +176,7 @@ npm test           # unit tests (vitest)
 
 **Stack:** Next.js 15 (App Router), React 19, TypeScript (strict, with
 `noUncheckedIndexedAccess`), Tailwind CSS 3. No database, no auth, no state store —
-Phase 1 needs none of them.
+neither phase needs them.
 
 ### Layout
 
@@ -157,16 +185,33 @@ src/
   app/                     pages and API routes
     page.tsx               dashboard (server-rendered, then live)
     search/                search results
-    asset/[kind]/[symbol]/ detail page
-    api/                   quotes, quote, chart, search, health
-  components/              client components: tables, chart, theme, search box
+    scanner/               engine run across every tracked asset
+    asset/[kind]/[symbol]/ detail page + streamed analysis
+    api/                   quotes, quote, chart, search, analysis, scanner, health
+  components/
+    analysis/              recommendation, analysis, risk and explanation cards
+    ...                    client components: tables, chart, theme, search box
   lib/
     providers/             one adapter per vendor + the routing registry
+    analysis/              the Phase 2 engine, one file per concern:
+      indicators.ts          pure maths: RSI, MACD, EMA/SMA, Bollinger, ATR, ADX…
+      technical.ts           technical module
+      fundamental.ts         stock and crypto fundamentals modules
+      market.ts              market regime, breadth and sector strength
+      sentiment.ts           news sentiment over real headlines
+      risk.ts                risk classification
+      levels.ts              entry / stop / target from ATR and pivots
+      scoring.ts             weighting, conviction, probabilities, confidence
+      engine.ts              orchestration only — fetches, runs modules, scores
+      scanner.ts             the whole universe through the engine
     env.ts                 config; every key optional
     http.ts                timeout, retry, rate limit, circuit breaker
     cache.ts               TTL cache keyed by how fast each datum changes
     dto.ts                 wire shapes shared by API routes and components
 ```
+
+Every analysis module is a pure function of its inputs — `engine.ts` is the only file
+that does I/O — so each module is testable and reusable on its own.
 
 ### The two rules the code enforces
 
@@ -187,20 +232,54 @@ src/
 | CoinGecko | ~10–30 requests/min | crypto prices, coin statistics, crypto search |
 | Binance | very high | crypto price history |
 | Finnhub | 60 requests/min | stock prices, company data, stock search |
-| Alpha Vantage | **25 requests/day** | stock price history only |
+| Alpha Vantage | **25 requests/day** | stock price history, stock technicals, market benchmark |
 
 The dashboard polls every 30 seconds and pauses entirely while its browser tab is in
 the background, which keeps a normal session inside every one of these.
 
+**Alpha Vantage is the tight one.** Stock charts, the technical module for stocks and
+the `SPY` market benchmark all draw on the same 25 requests a day. Daily bars are
+cached for six hours and the market benchmark for 30 minutes, so ordinary browsing
+is fine — but a full scanner run touches every tracked stock. If stock technicals
+start reporting "the free data plan has hit its request limit", that is the cause;
+crypto is unaffected because Binance and CoinGecko serve it.
+
+### Analysis caching
+
+| Value | Cached for | Why |
+| --- | --- | --- |
+| Market context (regime, breadth, sectors) | 30 minutes | shared by every asset page and the scanner |
+| Per-asset analysis | 5 minutes | the technicals move with the price |
+| Scanner run | 5 minutes | one run serves everyone hitting `/scanner` |
+
 ---
 
-## Phase 2
+## What the engine still cannot see
 
-The AI analysis engine — scoring, factor breakdowns, buy/hold/sell views — is
-intentionally absent. It will be added on top of this data layer once it has been
-running against live providers. An earlier draft of a scoring engine exists in this
-repository's git history at commit `b85a3d9` if it is useful as a starting point.
+The analysis is only as good as the data behind it, and several inputs that would
+materially improve it are not available on the free tiers this app is built for.
+Every one of them shows as **Insufficient Data** rather than being estimated.
+
+The short version, best value first:
+
+1. **Earnings calendar** — the engine cannot tell that a company reports tomorrow.
+   Finnhub's free tier includes it; this is the cheapest real improvement available.
+2. **A stock history provider without a 25/day ceiling** (Twelve Data, Polygon, FMP)
+   — removes the one constraint that can silence the technical module for stocks,
+   and brings intraday bars with it.
+3. **A crypto news source** (CryptoPanic, NewsAPI) — sentiment is stock-only today,
+   so 10% of the weighting is redistributed on every crypto asset.
+4. **Sector ETF quotes** — sector strength is currently measured from the handful of
+   tracked stocks in each sector, which is a small sample, not a sector.
+5. **Macro series** (FRED: rates, CPI, dollar index) — market conditions currently
+   mean "how is this asset class trading", with no macro context at all.
+
+Also missing entirely: insider and institutional flow, short interest, options
+positioning, and crypto on-chain metrics. The full reasoning, and what each gap
+costs in accuracy, is in **[docs/DATA-GAPS.md](docs/DATA-GAPS.md)**.
 
 ---
 
 Market data is for research and information only. Nothing here is investment advice.
+Recommendations are algorithmic readings of public data, and the suggested levels are
+arithmetic on measured volatility — not forecasts.

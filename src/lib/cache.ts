@@ -17,6 +17,11 @@ export const TTL = {
   profile: 7 * 24 * 60 * 60,
   news: 10 * 60,
   score: 5 * 60,
+  // Market-wide context moves slowly and is shared by every asset page, so it is
+  // cached far longer than a quote: recomputing it per page view would multiply
+  // one regime read into twenty provider calls.
+  marketContext: 30 * 60,
+  analysis: 5 * 60,
   failure: 30,
 } as const;
 

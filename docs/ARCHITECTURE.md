@@ -1,7 +1,8 @@
-# Architecture — Phase 1
+# Architecture
 
-The whole of Phase 1 is one job: get real market data onto a screen, and be honest
-when it cannot. Everything below serves that.
+Phase 1 is one job: get real market data onto a screen, and be honest when it cannot.
+Phase 2 adds a second: turn that data into an explainable verdict, and be equally
+honest about what it could not measure. Everything below serves those two.
 
 ## Layers
 
@@ -9,6 +10,7 @@ when it cannot. Everything below serves that.
 app/          pages + API routes        may import components, lib
 components/   presentation only         may import lib types and formatters
 lib/          providers, cache, http    may import nothing above it
+lib/analysis/ the engine                may import lib/providers, never components
 ```
 
 The dependency arrow points one way. A component that can reach a provider is a
@@ -105,8 +107,61 @@ carry no `dark:` variants for colour. The theme class is set by a small inline s
 in `<head>` before first paint, because React's first render happens after paint and
 would flash white.
 
-## Deliberately absent in Phase 1
+## The analysis engine (Phase 2)
 
-No database, no authentication, no background jobs, no AI. Watchlists, portfolios and
-the scoring engine all imply persistence and identity; adding either before the data
-layer is proven would mean debugging two systems at once.
+```
+                    ┌──────────────┐
+   engine.ts  ──►   │  technical   │──┐
+   (the only        ├──────────────┤  │
+    file that       │ fundamental  │──┤
+    does I/O)       ├──────────────┤  ├──►  scoring.ts  ──►  Recommendation
+                    │    market    │──┤       weights          + risk.ts
+                    ├──────────────┤  │       conviction       + levels.ts
+                    │  sentiment   │──┘       probabilities
+                    └──────────────┘          confidence
+```
+
+Every module is a pure function from its inputs to a `ModuleResult`, which is either
+a score with evidence or an explicit unavailability with a reason. That shape is what
+lets the same modules serve an asset page, an API route and the scanner without any
+of them re-deriving anything.
+
+### Why weights are redistributed rather than defaulted
+
+An unavailable module could be scored as a neutral 50. It is not, because that would
+be a claim: it would say "we looked and found nothing notable" when the truth is "we
+could not look". Redistribution keeps the verdict on the evidence that exists, and
+the confidence rating carries the cost of what is missing. Below 50% of the nominal
+weighting, no verdict is issued at all.
+
+### Why probabilities are computed from module votes
+
+Buy/Hold/Sell could be read off the conviction score with a lookup table. Instead
+each module emits a soft triple which is averaged by applied weight, so genuine
+disagreement between modules shows up as mass on both sides rather than being
+flattened into a single number. Confidence then shifts mass toward Hold, and largest-
+remainder rounding guarantees the three integers total exactly 100.
+
+### Why the technical module never sees a fabricated bar
+
+Indicators return `undefined` when the history cannot support them, and the module
+skips those signals rather than substituting a neutral value — an RSI zero-filled for
+its first thirteen bars reads as "extremely oversold" on every newly listed asset.
+CoinGecko's `/ohlc` carries no volume, so volume signals are skipped entirely for
+series that come from it rather than being computed from zeros.
+
+### Cost control
+
+The market context — regime, breadth, sector strength — is built once every 30
+minutes and passed into every asset's analysis. Rebuilding it per asset would turn
+one benchmark read into twenty, which on a 25-request-a-day free tier is the
+difference between working and not. The scanner batches four assets at a time and
+caches its whole result for five minutes.
+
+## Deliberately absent
+
+No database, no authentication, no background jobs. Watchlists, portfolios and alerts
+all imply persistence and identity, and the engine is stateless by design: every
+verdict is recomputed from live data, so there is no stored score that can quietly go
+stale. Score history and alerting are the natural first use for a database when one
+is added.

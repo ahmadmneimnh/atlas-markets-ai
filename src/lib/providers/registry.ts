@@ -3,7 +3,7 @@ import { log } from '@/lib/logger';
 import { cached, cacheKey, resultTtl, TTL } from '@/lib/cache';
 import type {
   Provider, Capability, ProviderResult, Quote, OhlcvSeries, Fundamentals,
-  CompanyProfile, CryptoMetrics, SearchHit, Unavailable, AssetKind,
+  CompanyProfile, CryptoMetrics, CryptoGlobal, NewsArticle, SearchHit, Unavailable, AssetKind,
 } from './types';
 import { unavailable } from './types';
 
@@ -40,6 +40,7 @@ const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
   'crypto.quote': ['coingecko', 'binance'],
   'crypto.ohlcv': ['binance', 'coingecko'],
   'crypto.metrics': ['coingecko'],
+  'crypto.global': ['coingecko'],
   search: ['finnhub', 'coingecko'],
 };
 
@@ -172,6 +173,26 @@ export const market = {
       TTL.fundamentals,
       () => resolve<CryptoMetrics>('crypto.metrics', (p) => p.cryptoMetrics?.(symbol)),
       resultTtl(TTL.fundamentals),
+    );
+  },
+
+  /** Recent company news, for the sentiment module. */
+  async news(symbol: string, limit = 25): Promise<ProviderResult<NewsArticle[]>> {
+    return cached(
+      cacheKey('news', symbol, limit),
+      TTL.news,
+      () => resolve<NewsArticle[]>('news', (p) => p.news?.(symbol, limit)),
+      resultTtl(TTL.news),
+    );
+  },
+
+  /** Whole-market crypto aggregates. Cached hard: one call serves every asset page. */
+  async cryptoGlobal(): Promise<ProviderResult<CryptoGlobal>> {
+    return cached(
+      cacheKey('cryptoglobal'),
+      TTL.marketContext,
+      () => resolve<CryptoGlobal>('crypto.global', (p) => p.cryptoGlobal?.()),
+      resultTtl(TTL.marketContext),
     );
   },
 

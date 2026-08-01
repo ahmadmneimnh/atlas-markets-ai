@@ -50,6 +50,47 @@ export function Provenance({ source, asOf }: { source: string; asOf?: Date }) {
   );
 }
 
+/**
+ * The data providers behind a recommendation, shown wherever one is.
+ *
+ * Deliberately not tucked behind a disclosure. A recommendation is a claim about
+ * money, and the vendors it rests on are part of the claim rather than a footnote
+ * to it — a reader who cannot see that a score came from one free-tier source has
+ * been given a number without the single most useful thing for judging it.
+ *
+ * Renders an explicit absence rather than nothing when the list is empty. A blank
+ * space reads as "no sources needed"; "no sources recorded" reads as the defect
+ * it would be.
+ */
+export function SourceList({
+  sources,
+  label = 'Data sources',
+  className = '',
+}: {
+  sources: string[];
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${className}`}>
+      <span className="text-[10px] uppercase tracking-widest text-ink-faint">{label}</span>
+      {sources.length === 0 ? (
+        <span className="text-[11px] text-warn">no sources recorded</span>
+      ) : (
+        sources.map((source) => (
+          <span
+            key={source}
+            className="inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass px-2 py-0.5 text-[10px] uppercase tracking-wider text-ink-muted"
+          >
+            <span className="inline-block h-1 w-1 rounded-full bg-gold/60" aria-hidden />
+            {source}
+          </span>
+        ))
+      )}
+    </div>
+  );
+}
+
 export function formatRelative(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return 'just now';

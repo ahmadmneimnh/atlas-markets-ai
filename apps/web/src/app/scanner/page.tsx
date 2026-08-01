@@ -70,7 +70,7 @@ async function ScannerTable() {
       </SectionTitle>
 
       <Card className="overflow-x-auto">
-        <table className="w-full min-w-[52rem] border-collapse text-sm">
+        <table className="w-full min-w-[62rem] border-collapse text-sm">
           <thead>
             <tr className="border-b border-glass-border/60 text-left">
               <Th className="w-12">#</Th>
@@ -81,6 +81,7 @@ async function ScannerTable() {
               <Th className="text-right">Confidence</Th>
               <Th className="text-right">Potential</Th>
               <Th>Risk</Th>
+              <Th>Sources</Th>
             </tr>
           </thead>
           <tbody>
@@ -155,6 +156,17 @@ function Row({ rank, opportunity }: { rank: number; opportunity: Opportunity }) 
       </Td>
       <Td>
         <span className="text-xs capitalize text-ink-muted">{opportunity.riskLevel ?? '—'}</span>
+      </Td>
+      <Td>
+        {/* Every row is a recommendation, so every row carries its attribution.
+            A ranking table is where an unsourced number is easiest to skim past. */}
+        <span className="text-[10px] uppercase tracking-wider text-ink-faint">
+          {opportunity.providers.length > 0 ? (
+            opportunity.providers.join(', ')
+          ) : (
+            <span className="text-warn">none recorded</span>
+          )}
+        </span>
       </Td>
     </tr>
   );

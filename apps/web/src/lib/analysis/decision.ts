@@ -112,6 +112,15 @@ export interface TradePlan {
   entry: EntryZone;
   target: PriceLevel;
   stop: PriceLevel;
+  /**
+   * Every data provider that contributed to this recommendation.
+   *
+   * Carried on the plan, not left to the caller to reassemble from the score, so
+   * that no surface can render a recommendation without having its sources in
+   * hand. A price level with no attribution is indistinguishable from one
+   * someone typed in.
+   */
+  sources: string[];
   /** Taken from the score's risk assessment, not recomputed. */
   riskLevel: RiskAssessment['severity'];
   /** Reward divided by risk, measured from the midpoint of the entry zone. */
@@ -543,6 +552,19 @@ export function buildTradePlan(ctx: AssetContext, score: AssetScore): PlanOutcom
     entry,
     target,
     stop,
+    // Union of the scoring engine's providers and the ones that produced the
+    // price levels. The level inputs can name a vendor the factors never used —
+    // a quote source, or the analyst target — and omitting it would leave a
+    // number on screen credited to nobody.
+    sources: [
+      ...new Set([
+        ...score.sources,
+        priceSource,
+        ...entry.inputs.map((i) => i.source),
+        ...target.inputs.map((i) => i.source),
+        ...stop.inputs.map((i) => i.source),
+      ]),
+    ].sort(),
     riskLevel: score.risk.severity,
     riskReward,
     riskRewardBelowTarget: belowTarget,

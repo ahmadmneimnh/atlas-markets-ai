@@ -83,10 +83,16 @@ const ALL: Provider[] = [
  *    difference between a Finnhub-only deployment scoring 45% of the weight with
  *    no price levels at all, and scoring the full set. It is below the keyed
  *    vendors because it serves daily bars only and publishes no uptime promise.
- *  - **Binance leads crypto quotes, Coinbase second.** Binance has the deeper book
- *    on most pairs; Coinbase prices in real USD rather than USDT, so it is the
- *    better answer whenever the peg is under stress — exactly when the fallthrough
- *    is most likely to be exercised.
+ *  - **Binance leads crypto prices and bars; CoinGecko leads crypto metrics.**
+ *    Binance has the deeper book on most pairs, and — the part that is not
+ *    cosmetic — its klines carry real volume, while CoinGecko's `/ohlc` returns
+ *    [time, o, h, l, c] with none. Promoting CoinGecko for bars would silently
+ *    switch off the two indicators that need volume (VWAP and the
+ *    volume-vs-average trend) and lower the technical factor's confidence on
+ *    every token. CoinGecko still owns `crypto.metrics`, where it is the only
+ *    source for market cap, supply and rank. Coinbase sits second on quotes: it
+ *    prices in real USD rather than USDT, so it is the better answer whenever
+ *    the peg is under stress — exactly when the fallthrough gets exercised.
  */
 const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
   quote: ['finnhub', 'twelvedata', 'fmp', 'polygon', 'yahoo'],

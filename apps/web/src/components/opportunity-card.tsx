@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 
 import type { Opportunity } from '@/lib/scanner/rank';
-import { formatPrice } from '@/components/primitives';
+import { SourceList, formatPrice } from '@/components/primitives';
 import { CardAnalysis } from '@/components/card-analysis';
 
 /**
@@ -146,6 +146,13 @@ export function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
           </div>
         </div>
       </Link>
+
+      {/* Visible on the card itself rather than only inside the analysis
+          disclosure: the card is a recommendation in its own right, and it
+          should never be readable without its attribution. */}
+      <div className="mt-3 border-t border-glass-border/60 pt-3">
+        <SourceList sources={opportunity.providers} label="Sources" />
+      </div>
 
       <CardAnalysis citations={opportunity.citations} />
     </div>

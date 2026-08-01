@@ -375,3 +375,27 @@ describe('reward-to-risk', () => {
     expect(plan.target.price).toBeLessThan(400);
   });
 });
+
+describe('source attribution', () => {
+  it('unions the scoring providers with the ones behind the price levels', () => {
+    const score = scoreOf('BUY');
+    score.sources = ['finnhub'];
+
+    const plan = expectOk(
+      buildTradePlan(withAnalyst(contextFrom(sawtooth(), 96), { targetConsensus: 130 }), score),
+    );
+
+    // finnhub scored the factors, twelvedata supplied the bars behind ATR and
+    // the pivots, fmp supplied the analyst target. A plan crediting only the
+    // first would leave two of its three price levels attributed to nobody.
+    expect(plan.sources).toContain('finnhub');
+    expect(plan.sources).toContain('twelvedata');
+    expect(plan.sources).toContain('fmp');
+  });
+
+  it('is never empty for a plan that was produced', () => {
+    const plan = expectOk(buildTradePlan(contextFrom(sawtooth()), scoreOf('BUY')));
+
+    expect(plan.sources.length).toBeGreaterThan(0);
+  });
+});

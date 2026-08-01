@@ -1,6 +1,13 @@
 import { clsx } from 'clsx';
 import type { TradePlan } from '@/lib/analysis/decision';
-import { Card, Provenance, RecommendationBadge, Unavailable, formatPrice } from '../primitives';
+import {
+  Card,
+  Provenance,
+  RecommendationBadge,
+  SourceList,
+  Unavailable,
+  formatPrice,
+} from '../primitives';
 
 /**
  * The decision, stated as five answers: what to do, how sure, at what price, where
@@ -141,6 +148,14 @@ export function DecisionPanel({ plan }: { plan: TradePlan }) {
             method={plan.stop.method}
             tone="bear"
           />
+        </div>
+
+        {/* Sources sit with the recommendation, not behind the explanation
+            toggle. Every number above came from one of these, and a reader
+            deciding whether to act on them is entitled to see which without
+            opening anything. */}
+        <div className="mt-5 border-t border-glass-border/60 pt-4">
+          <SourceList sources={plan.sources} />
         </div>
       </Card>
 

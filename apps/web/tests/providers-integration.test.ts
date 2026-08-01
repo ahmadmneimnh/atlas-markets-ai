@@ -174,6 +174,20 @@ describe('complete ranking', () => {
   });
 });
 
+describe('source attribution', () => {
+  it('carries every contributing provider onto the ranked entry', () => {
+    const score = scored('A', 80, 'BUY');
+    score.sources = ['finnhub', 'stooq'];
+
+    const result = scan([{ name: 'A', score }], 1, 1);
+
+    // The UI renders this next to the recommendation itself, not behind a
+    // disclosure, so an entry reaching the scanner without it would put an
+    // unattributed call on screen.
+    expect(result.buy[0]?.providers).toEqual(['finnhub', 'stooq']);
+  });
+});
+
 describe('potential move', () => {
   it('is derived from the plan target and reported signed', () => {
     const base = scored('UP', 80, 'BUY');
@@ -192,6 +206,7 @@ describe('potential move', () => {
             entry: { low: 98, high: 100, method: 'test', inputs: [] },
             target: { price: 125, method: 'test', inputs: [] },
             stop: { price: 90, method: 'test', inputs: [] },
+            sources: ['finnhub', 'stooq'],
             riskLevel: 'medium',
             riskReward: 2,
             riskRewardBelowTarget: false,

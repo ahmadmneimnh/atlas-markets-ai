@@ -35,7 +35,8 @@
     "stack:up": "docker compose -f infra/docker-compose.yml --profile full up --build",
     "stack:down": "docker compose -f infra/docker-compose.yml --profile full down",
     "auth:apple-secret": "node scripts/apple-client-secret.mjs",
-    "auth:secret": "node -e \"console.log('AUTH_SECRET=' + require('crypto').randomBytes(32).toString('base64'))\""
+    "auth:secret": "node -e \"console.log('AUTH_SECRET=' + require('crypto').randomBytes(32).toString('base64'))\"",
+    "db:migrate:deploy": "npm run migrate:deploy --workspace @atlas/db"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

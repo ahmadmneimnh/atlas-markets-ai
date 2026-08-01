@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A new push to the same branch cancels the in-flight run: CI on a commit that
+# has already been superseded tells you nothing and occupies a runner.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Prisma's client is generated from the schema, not from a live connection, so
+  # a syntactically valid URL is enough. No database is reachable in CI and none
+  # is needed — the tests are pure functions and recorded response shapes.
+  DATABASE_URL: postgresql://atlas:atlas@localhost:5432/atlas_ci
+
+jobs:
+  node:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run format:check
+
+      # The build is a separate signal from typecheck: Next catches route-level
+      # mistakes (a client component importing server-only code, a bad
+      # generateStaticParams) that tsc alone does not.
+      - run: npm run build
+
+  python:
+    name: AI engine
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install -r requirements.txt -e '.[dev]'
+      - run: ruff check .
+      - run: mypy app
+      - run: pytest -q
+
+  schema:
+    name: Prisma schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Validates the schema parses and its relations resolve. Migration drift is
+      # checked against a real database in the deploy workflow, not here.
+      - run: npx prisma validate --schema packages/db/prisma/schema.prisma

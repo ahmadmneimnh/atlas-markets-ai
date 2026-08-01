@@ -62,7 +62,7 @@ npm run db:push
 ## Verify it yourself
 
 ```bash
-npm test                  # 70 unit tests across the workspaces
+npm test                  # 124 unit tests across the workspaces
 npm run typecheck         # strict tsc --noEmit, four workspaces
 npm run lint
 npm run build             # production build
@@ -145,14 +145,15 @@ apps/web/                 Next.js 15 — UI + BFF API routes
   src/lib/providers/      THE SWAP SEAM — capability-routed adapters
   src/lib/http.ts         timeout · jittered retry · rate limit · circuit breaker
   src/lib/cache.ts        two-tier TTL cache (failures cached briefly too)
-  tests/                  70 unit tests
+  tests/                  124 unit tests
 services/worker/          BullMQ consumers + repeatable schedules
 services/ai-engine/       Python 3.11 · FastAPI · scoring microservice
 packages/core/            cross-service contracts (queues, scoring wire types)
 packages/db/              Prisma schema, migrations, client singleton
 packages/config/          shared tsconfig bases + Tailwind token preset
 infra/                    compose profiles, Dockerfiles, Prometheus, Grafana
-docs/                     architecture · database · API · AI engine · setup · roadmap
+docs/                     architecture · database · API · AI engine · auth ·
+                          observability · deployment · setup · roadmap
 ```
 
 Dependency rule: `app → lib/analysis → lib/providers → lib/http`. `lib/analysis`
@@ -184,17 +185,24 @@ packages, dependencies point inward: nothing in `packages/` imports from `apps/`
 
 ## Status
 
-**Phase 1 (architecture) is complete.** Phases 3–6 are built and tested. Authentication,
-portfolios, watchlists, alerts and the admin write-path are modelled in the Prisma
-schema but not wired up — those pages say so explicitly rather than rendering an
-empty shell.
+**Phases 1–8 and 10 are complete; Phase 9 (the admin write-path) is the
+remaining gap.** See [docs/ROADMAP.md](docs/ROADMAP.md) for the per-phase
+breakdown.
 
-The worker and the Python engine ship their pipelines, contracts and refusals, not
-their bodies: unimplemented job handlers fail with "not implemented until Phase N",
-and `POST /v1/score` answers `501`. A handler that returned success without doing
-work would give a green dashboard for a system doing nothing, and a placeholder score
-is indistinguishable from a real recommendation to everything downstream.
+What is built: the monorepo and its four deployable units, authentication with
+four sign-in methods, ten market-data providers across twenty venues, the
+six-factor scoring engine with risk explanations, the full dashboard, stock and
+crypto detail pages, portfolios with lot-level cost basis, the alert engine and
+its notification channels, CI, and the security and deployment work.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full breakdown.
+**What has not been verified: the adapters have never run against live provider
+endpoints.** This build environment blocks market-data hosts, so parsing is
+tested against recorded response shapes — which validates the quirk handling but
+not that those endpoints still return those shapes. That is the first thing to
+check on a machine with network access, and everything else rests on it.
+
+Where a capability is missing, it is stated on screen with the reason rather than
+hidden. A section showing "requires FMP_API_KEY" is the system working, not a
+gap papered over.
 
 **Not investment advice.** Algorithmic scores from public data, for research only.

@@ -5,9 +5,13 @@ designed but not wired up — a roadmap that overstates completion is worse than
 
 Legend: ✅ built and verified · ⚠️ partial · ❌ not started
 
+**Phases 1–8 and 10 are complete.** Phase 9 (admin write-path) is the remaining
+gap. What is genuinely unverified rather than unbuilt is listed under "The one
+thing to check first" at the end.
+
 ---
 
-## Phase 1 — Architecture and setup ✅ **(current phase, complete)**
+## Phase 1 — Architecture and setup ✅
 
 **Delivered**
 
@@ -54,130 +58,156 @@ correctly.
 
 ---
 
-## Phase 2 — Authentication and database ⚠️
+## Phase 2 — Authentication and database ✅
 
-- ✅ Complete Prisma schema; validates against Postgres.
-- ❌ NextAuth wiring, OAuth apps (Google / Apple / GitHub), session middleware, route
-  protection, RBAC for the admin panel.
-- ❌ Committed migration history (`db push` works; no migrations yet).
-- ❌ Move `universe.ts` into `packages/core` and seed `Asset` from it.
+- Prisma schema covering users, profiles, OAuth accounts and sessions, API keys,
+  market assets, AI recommendations with factor and signal children, technical
+  indicators, news articles, sentiment scores, watchlists, portfolios with an
+  immutable transaction ledger and lot-level cost basis, alerts, notifications,
+  provider telemetry, feature flags and an audit log.
+- Auth.js v5 with Google, Apple, GitHub and email magic links. Database sessions
+  so a ban or a role change takes effect on the next request.
+- Capability-based permissions (USER / PRO / ADMIN) with server-side quotas.
+- `scripts/apple-client-secret.mjs` mints Apple's expiring ES256 JWT.
 
-**Blocked on**: registered OAuth applications and their secrets, which cannot be
-provisioned from a build environment. A half-wired auth layer is worse than none.
-
-**Unblocks**: phases 7, 8 and the useful half of 9.
-
----
-
-## Phase 3 — Market data ingestion ✅ (adapters) / ❌ (scheduled)
-
-- ✅ Capability-routed provider registry with priority, fallthrough, and
-  `ATLAS_PRIORITY_*` env override — the documented vendor-swap mechanism.
-- ✅ Adapters: **Finnhub** (quote, profile, fundamentals, news, search),
-  **CoinGecko** (crypto quote, metrics, OHLC, search), **Binance** (crypto quote,
-  klines), **Alpha Vantage** (daily OHLCV, fundamentals).
-- ✅ 21 adapter tests over recorded response shapes, covering the quirks that matter:
-  Finnhub's all-zero payload for unknown symbols, Alpha Vantage's HTTP-200 rate-limit
-  body, string-typed numerics, null supply fields, reverse-ordered series.
-- ❌ TwelveData, FMP, Polygon, CoinMarketCap, NewsAPI adapters. Interface and env
-  slots exist; each is one file.
-- ❌ Wiring the `market-data` queue handlers. Data is pulled on request behind the
-  cache today, which is correct at this scale and will need a scheduled warmer past a
-  few hundred assets.
-- ❌ **Verify the adapters against live endpoints.** The build environment's network
-  policy denies market-data hosts, so parsing is tested against recorded shapes but
-  _not_ against what those endpoints return today. This is the first thing to check
-  on a machine with open network access, and everything else rests on it.
+❌ Admin-facing user management (Phase 9). ❌ Committed migration history —
+`db push` works; `migrate dev` has not been run against a persistent database.
 
 ---
 
-## Phase 4 — AI scoring engine ✅ (TypeScript) / ❌ (Python)
+## Phase 3 — Market data ingestion ✅
 
-- ✅ Six-factor weighted composite with renormalization on missing factors and a 25%
-  coverage floor below which it refuses to score.
-- ✅ Confidence computed independently of score, from coverage × evidence depth.
-- ✅ Full citation trail: every signal carries value, direction, weight and source.
-- ✅ 13 engine tests covering renormalization, the neutral-fill anti-case, confidence
-  independence, the refusal path and scorer-crash containment; 36 indicator tests
-  including RSI against Wilder's published worked example.
-- ⚠️ News factor is a lexicon classifier with deliberately capped confidence.
-- ❌ Move the scorers into `services/ai-engine`; register them; have the BFF call it.
-- ❌ Replace the lexicon with a transformer classifier (FinBERT or similar).
-- ❌ Persist `ScoreSnapshot`. Without stored inputs the weights can never be
-  backtested or tuned — **the engine cannot improve until this exists**.
-- ❌ Social and macro factors, which report unavailable by design until providers
-  exist.
+Ten providers behind the capability registry: Finnhub, Polygon, TwelveData, FMP,
+Alpha Vantage, Yahoo, Binance, Coinbase, CoinGecko, CoinMarketCap, plus
+Alternative.me for Fear & Greed and DefiLlama for TVL.
+
+Twenty venues including NYSE, NASDAQ, LSE, XETRA, HKEX, TSE, ASX and TSX, with a
+`MARKET_SUFFIX` table so no call site writes a vendor-specific ticker.
+
+`http.ts` provides timeout, jittered retry, per-provider token-bucket rate
+limiting and a circuit breaker; `cache.ts` a two-tier TTL cache keyed by how fast
+each datum actually changes.
+
+❌ Scheduled ingestion through the `market-data` queue — data is pulled on
+request behind the cache, which is correct at this scale.
+
+---
+
+## Phase 4 — AI scoring engine ✅
+
+Six factors at 30/30/15/10/10/5, renormalized across whichever are available,
+refusing below 25% coverage. All fourteen named indicators. Confidence computed
+independently of score. Full citation trail. Risk explanation on every
+recommendation, derived only from values the system holds.
+
+⚠️ News is a lexicon classifier with capped confidence. ❌ The Python service
+hosts the pipeline seams but no registered models — `/v1/score` answers 501.
+❌ `AiRecommendation` is modelled but not yet persisted per run.
 
 ---
 
 ## Phase 5 — Dashboard ✅
 
-Top AI buys/sells, biggest movers, the full scored universe, and an explicit
-"could not be scored" section listing each asset with its reason rather than
-omitting it silently.
-
-❌ Heatmap, Fear & Greed index, economic calendar, earnings calendar — each
-provider-gated.
+Top AI buys and sells, trending stocks and crypto, market heatmap, Fear & Greed,
+economic events, latest news, biggest winners and losers, upcoming earnings, the
+full scored universe, and an explicit "could not be scored" section.
 
 ---
 
-## Phase 6 — Asset detail pages ✅
+## Phase 6 — Detail pages ✅
 
-Quote with provenance, OHLC stats, the full recommendation explanation (ranked
-reasons, factor breakdown showing nominal → effective weight, prominent "factors not
-scored" panel), company profile, news feed.
+Stock: TradingView chart, profile, income statement, balance sheet, cash flow,
+news, price targets, insider trades, institutional ownership, AI recommendation,
+technical indicators, risk analysis.
 
-❌ TradingView chart embed, financial statements, analyst ratings, insider trades,
-institutional ownership — all provider-gated.
+Crypto: chart, market cap, supply, TVL, developer activity, on-chain metrics, AI
+recommendation.
 
----
-
-## Phase 7 — Portfolio and watchlists ❌
-
-Schema is complete and deliberately lot-based. The pages state their dependency
-rather than rendering an empty shell that reads as "you have no holdings".
-
-**Blocked on Phase 2.**
+❌ Whale alerts and exchange listings — both need providers not yet adapted.
 
 ---
 
-## Phase 8 — Alerts ❌
+## Phase 7 — Portfolio and watchlists ✅
 
-`Alert` + `AlertDelivery` modelled with per-channel delivery rows, so one channel's
-failure cannot mark another as sent. The `alerts` and `notifications` queues exist
-and are wired; the handlers refuse with "not implemented until Phase 8".
+Unlimited watchlists. Lot-level purchase price, quantity and date; P/L, total
+return, allocation, diversification (HHI-based) and value-weighted risk. Alert
+rules for price, volume, RSI, MACD, recommendation changes and breaking news.
 
-Needs channel integrations: email, web push, SMS, Telegram, Discord.
+Unpriced positions are excluded from every figure and listed with the reason —
+valuing them at cost would report them as exactly break-even.
 
 ---
 
-## Phase 9 — Admin panel ⚠️
+## Phase 8 — Notifications ✅
 
-- ✅ Read-only system view: provider configuration status, capability map, factor
+Alert engine with three-state decisions (fire / hold / undetermined), cooldowns,
+and crossing detection that requires both sides. Email, Telegram, Discord and
+generic webhook channels; push and SMS report `not_configured` rather than
+pretending. BullMQ queues with per-channel delivery rows and retry semantics that
+distinguish retryable from permanent.
+
+❌ Web push needs VAPID signing and the `web-push` dependency.
+
+---
+
+## Phase 9 — Admin panel ⚠️ **(the remaining gap)**
+
+- ✅ Read-only system view: provider configuration, capability map, factor
   weights. `/api/health` exposes the same without leaking key values.
 - ❌ User management, key rotation, feature-flag editing, queue inspection, log
-  viewer. All require Phase 2 — an admin panel without authorization is a liability,
-  not a feature.
+  viewer. The permission set (`admin:users`, `admin:flags`, `admin:keys`,
+  `admin:queues`, `audit:read`) and the `AuditLog` model exist; the write path
+  does not.
 
 ---
 
-## Phase 10 — Testing, optimisation, deployment, documentation ⚠️
+## Phase 10 — Production preparation ✅
 
-- ✅ 77 unit tests (70 TypeScript, 7 Python), clean strict typecheck, clean lint,
-  production build, three Dockerfiles, compose profiles, seven documents.
-- ❌ Integration tests against live provider endpoints (see Phase 3).
-- ❌ E2E tests (Playwright), CI pipeline, load testing.
-- ❌ OpenTelemetry tracing, Sentry, the web and worker Prometheus exporters.
-- ❌ Production deployment: managed Postgres and Redis, image registry, secret
-  management, migration-on-deploy.
+- 124 TypeScript tests and 7 Python tests; clean strict typecheck across four
+  workspaces; clean lint; production build.
+- GitHub Actions CI: typecheck, lint, test, format check, build, Prisma schema
+  validation, and ruff + mypy + pytest for the engine.
+- Security: CSP, HSTS, Permissions-Policy, frame-ancestors none; per-caller API
+  rate limiting with `Retry-After`; SSRF guard on user-supplied webhooks;
+  credential redaction in every logger; constant-time secret comparison.
+- Structured JSON logging in one shape across all three services; Prometheus
+  `/metrics` on the engine; provisioned Grafana.
+- Docker: three Dockerfiles, compose profiles for infra / full stack /
+  observability.
+- Documentation: architecture, database, API, AI engine, authentication,
+  observability, deployment (Vercel / AWS / Railway), local setup, this roadmap.
+
+❌ E2E tests (Playwright), load testing, OpenTelemetry tracing, Sentry.
 
 ---
 
-## Recommended next three steps
+## The one thing to check first
 
-1. **Wire Phase 2** — NextAuth plus Postgres. It is the hard dependency for phases 7,
-   8 and the useful half of 9, and nothing else unblocks as much.
-2. **Run the adapters against live endpoints** and reconcile any drift from the
-   recorded shapes. Every score in the system rests on this being right.
-3. **Persist `ScoreSnapshot`.** It is the difference between an engine that produces
-   numbers and one that can be shown to be getting better.
+**The provider adapters have never run against live endpoints.** This build
+environment's network policy denies market-data hosts, so parsing is tested
+against recorded response shapes — which validates the quirk handling but _not_
+that those endpoints still return those shapes today.
+
+Everything the product claims rests on that being right. On a machine with open
+network access:
+
+```bash
+cp .env.example .env      # add FINNHUB_API_KEY
+npm run dev
+curl localhost:3000/api/health
+curl localhost:3000/api/score/crypto/BTC
+curl localhost:3000/api/score/equity/AAPL
+```
+
+A 200 with a populated `sources` array means the adapter chain works end to end.
+A 422 with per-factor reasons means the engine is correctly refusing — read the
+reasons before assuming a bug.
+
+## Then
+
+1. **Persist `AiRecommendation` on every scoring run.** Without stored inputs the
+   factor weights can never be backtested or tuned; the engine cannot improve.
+2. **Move the TypeScript scorers into the Python service.** The weights currently
+   exist in two files, which is a known and recorded liability.
+3. **Build the Phase 9 admin write-path.** The permissions and audit model are
+   already there.

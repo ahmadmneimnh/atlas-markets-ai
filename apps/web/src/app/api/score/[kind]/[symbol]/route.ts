@@ -2,13 +2,20 @@ import { NextResponse } from 'next/server';
 import { getScore } from '@/lib/service';
 import { findAsset } from '@/lib/universe';
 import type { AssetRef } from '@/lib/providers/types';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _req: Request,
+  request: Request,
   { params }: { params: Promise<{ kind: string; symbol: string }> },
 ) {
+  // Scoring fans out to several providers per call, so it is the route most
+  // worth protecting: one client in a polling loop would otherwise exhaust the
+  // shared vendor quota for everybody on this deployment.
+  const limited = enforceRateLimit(request, RATE_LIMITS.score);
+  if (limited) return limited;
+
   const { kind, symbol: raw } = await params;
 
   if (kind !== 'equity' && kind !== 'crypto') {

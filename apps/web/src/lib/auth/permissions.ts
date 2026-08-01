@@ -77,11 +77,19 @@ const BY_ROLE: Record<Role, readonly Permission[]> = {
 };
 
 /**
- * Quotas per role. Enforced server-side at the write path — a limit checked only
+ * Quotas per role, enforced server-side at the write path — a limit checked only
  * in the UI is not a limit.
+ *
+ * Watchlists are unlimited for everyone. They are rows in a table and cost
+ * nothing to keep; capping them would be a pricing decision dressed up as a
+ * technical one.
+ *
+ * Alerts are capped because they are not free: every enabled alert costs
+ * provider calls on each evaluation sweep, so an unbounded count lets one
+ * account exhaust the shared quota for everybody.
  */
 export const QUOTAS: Record<Role, { watchlists: number; alerts: number; apiKeys: number }> = {
-  USER: { watchlists: 5, alerts: 10, apiKeys: 0 },
+  USER: { watchlists: Number.POSITIVE_INFINITY, alerts: 25, apiKeys: 0 },
   PRO: { watchlists: Number.POSITIVE_INFINITY, alerts: 200, apiKeys: 10 },
   ADMIN: { watchlists: Number.POSITIVE_INFINITY, alerts: Number.POSITIVE_INFINITY, apiKeys: 25 },
 };

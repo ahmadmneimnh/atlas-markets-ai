@@ -136,6 +136,20 @@ export async function scoreMany(
  * that could become a client component. The rule caught this exact import when
  * the detail page first reached for the adapters, which is the rule working.
  */
+// Result types re-exported alongside the functions, so a component never needs
+// to name an adapter module even for a type-only import. `import type` is erased
+// at compile time and is genuinely safe, but the lint rule cannot tell the two
+// apart — and a rule with a per-file exception is a rule people learn to bypass.
+export type {
+  FmpBalanceSheet,
+  FmpCashFlow,
+  FmpIncomeStatement,
+  FmpPriceTarget,
+  FmpAnalystRating,
+} from '@/lib/providers/equity/fmp';
+export type { InsiderTransaction, InstitutionalHolder } from '@/lib/providers/equity/finnhub';
+export type { ChainTvl } from '@/lib/providers/crypto/defillama';
+
 export const detail = {
   incomeStatement: (symbol: string, periods = 5) => fmpExtras.incomeStatement(symbol, periods),
   balanceSheet: (symbol: string, periods = 5) => fmpExtras.balanceSheet(symbol, periods),

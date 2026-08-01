@@ -3,8 +3,9 @@ import type {
   FmpCashFlow,
   FmpIncomeStatement,
   FmpPriceTarget,
-} from '@/lib/providers/equity/fmp';
-import type { InsiderTransaction, InstitutionalHolder } from '@/lib/providers/equity/finnhub';
+  InsiderTransaction,
+  InstitutionalHolder,
+} from '@/lib/service';
 
 /**
  * Financial statement and ownership tables for the stock detail page.

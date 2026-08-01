@@ -8,6 +8,7 @@ import type {
   FactorOutcome,
 } from './types';
 import { isUnavailable } from './types';
+import { buildRiskExplanation } from './risk-explanation';
 
 import { technicalScorer } from './factors/technical';
 import { fundamentalScorer } from './factors/fundamental';
@@ -156,6 +157,8 @@ export async function scoreAsset(
 
   const sources = [...new Set(breakdown.flatMap((b) => b.signals.map((s) => s.source)))];
 
+  const risk = buildRiskExplanation(breakdown, omitted, coverage, confidence);
+
   return {
     ref: ctx.ref,
     score: Math.round(composite * 10) / 10,
@@ -165,6 +168,7 @@ export async function scoreAsset(
     omitted,
     topReasons,
     sources,
+    risk,
     computedAt: new Date(),
   };
 }

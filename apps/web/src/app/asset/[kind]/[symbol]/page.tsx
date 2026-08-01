@@ -3,6 +3,7 @@ import { getScore } from '@/lib/service';
 import { market } from '@/lib/providers/registry';
 import { findAsset } from '@/lib/universe';
 import { ScoreExplanation } from '@/components/score-card';
+import { RiskPanel } from '@/components/risk-panel';
 import {
   Card,
   SectionTitle,
@@ -92,7 +93,10 @@ export default async function AssetPage({
           AI recommendation
         </SectionTitle>
         {outcome.ok ? (
-          <ScoreExplanation score={outcome.score} />
+          <div className="space-y-8">
+            <ScoreExplanation score={outcome.score} />
+            <RiskPanel risk={outcome.score.risk} />
+          </div>
         ) : (
           <div className="space-y-4">
             <Unavailable

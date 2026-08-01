@@ -76,6 +76,27 @@ export interface ScoreBreakdown {
   signals: Signal[];
 }
 
+/**
+ * One statement about risk, tied to the evidence it came from.
+ *
+ * `signal` is present for measured risk and absent for a caveat about the
+ * analysis itself — the two are different claims and the UI renders them
+ * differently.
+ */
+export interface RiskNote {
+  severity: 'low' | 'medium' | 'high';
+  text: string;
+  signal?: Signal;
+}
+
+export interface RiskAssessment {
+  severity: 'low' | 'medium' | 'high';
+  /** Measured properties of the asset: volatility, drawdown, ATR. */
+  drivers: RiskNote[];
+  /** Limits of this analysis: missing factors, thin coverage, weak classifiers. */
+  caveats: RiskNote[];
+}
+
 export interface AssetScore {
   ref: AssetRef;
   score: number;
@@ -89,5 +110,11 @@ export interface AssetScore {
   topReasons: Signal[];
   /** Distinct provider ids that contributed data. */
   sources: string[];
+  /**
+   * Required, not optional. A recommendation without a stated risk is the
+   * failure mode this product exists to avoid, so the type makes it
+   * unconstructible rather than trusting every call site to remember.
+   */
+  risk: RiskAssessment;
   computedAt: Date;
 }

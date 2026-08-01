@@ -45,6 +45,9 @@ export async function GET(
     breakdown: outcome.score.breakdown,
     omitted: outcome.score.omitted,
     sources: outcome.score.sources,
+    // Required by the contract, not an optional extra: a recommendation shipped
+    // without its risk statement is the failure this product exists to avoid.
+    risk: outcome.score.risk,
     quote: outcome.quote ?? null,
     computedAt: outcome.score.computedAt.toISOString(),
   });

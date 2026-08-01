@@ -68,13 +68,17 @@ equities entirely. Restart `npm run dev` after editing `.env`.
 
 ```powershell
 npm run infra:up      # starts Postgres + Redis in Docker
-npm run db:generate   # generate the Prisma client
 npm run db:push       # create the tables
 npm run db:seed       # feature flags
 ```
 
 `db:push`, `db:migrate`, `db:seed` and `db:studio` read the root `.env`, so step 3
-has to have happened first. `db:generate` does not.
+has to have happened first.
+
+The Prisma client itself is generated during `npm install` by a `postinstall`
+hook in `packages/db`, because the app needs those types to typecheck even when
+you never start a database. Re-run `npm run db:generate` by hand only after you
+edit `packages/db/prisma/schema.prisma`.
 
 Run the background worker in a second terminal:
 

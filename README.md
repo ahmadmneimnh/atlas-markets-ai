@@ -55,14 +55,17 @@ Redis). They are required for watchlists, portfolios, alerts and score history:
 ```bash
 cp .env.example .env
 npm run infra:up          # postgres + redis in Docker
-npm run db:generate
 npm run db:push
 ```
+
+The Prisma client is generated for you by a `postinstall` hook, so `npm install`
+is the only prerequisite for `npm run dev`. Run `npm run db:generate` by hand
+only after editing `packages/db/prisma/schema.prisma`.
 
 ## Verify it yourself
 
 ```bash
-npm test                  # 136 unit tests across the workspaces
+npm test                  # 158 unit tests across the workspaces
 npm run typecheck         # strict tsc --noEmit, four workspaces
 npm run lint
 npm run build             # production build

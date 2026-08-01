@@ -96,6 +96,7 @@ export const polygon: Provider = {
   id: 'polygon',
   label: 'Polygon.io',
   capabilities: ['quote', 'ohlcv', 'profile', 'search'],
+  assetKinds: ['equity'],
 
   isConfigured: () => Boolean(env.providers.polygon),
 

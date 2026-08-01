@@ -50,6 +50,7 @@ export const alphavantage: Provider = {
   id: 'alphavantage',
   label: 'Alpha Vantage',
   capabilities: ['ohlcv', 'fundamentals'],
+  assetKinds: ['equity'],
 
   isConfigured: () => Boolean(env.providers.alphaVantage),
 

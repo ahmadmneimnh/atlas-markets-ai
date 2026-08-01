@@ -157,6 +157,26 @@ function backoffMs(attempt: number): number {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function fetchJson<T>(opts: FetchOptions): Promise<T> {
+  return request<T>(opts, 'application/json', (res) => res.json() as Promise<T>);
+}
+
+/**
+ * Same retry, rate-limit and circuit-breaker path as `fetchJson`, for endpoints
+ * that answer with something other than JSON.
+ *
+ * Shares the machinery rather than reimplementing it: a provider that bypassed
+ * the circuit breaker would keep hammering a dead upstream while every other
+ * provider had backed off, which is the failure mode the breaker exists for.
+ */
+export async function fetchText(opts: FetchOptions): Promise<string> {
+  return request<string>(opts, 'text/plain, text/csv, */*', (res) => res.text());
+}
+
+async function request<T>(
+  opts: FetchOptions,
+  accept: string,
+  parse: (res: Response) => Promise<T>,
+): Promise<T> {
   const { provider, url, headers = {}, timeoutMs = 8_000, retries = 2, rateLimit } = opts;
 
   if (isCircuitOpen(provider)) throw new CircuitOpenError(provider);
@@ -171,7 +191,7 @@ export async function fetchJson<T>(opts: FetchOptions): Promise<T> {
 
     try {
       const res = await fetch(url, {
-        headers: { accept: 'application/json', ...headers },
+        headers: { accept, ...headers },
         signal: controller.signal,
         cache: 'no-store',
       });
@@ -188,10 +208,10 @@ export async function fetchJson<T>(opts: FetchOptions): Promise<T> {
         throw err;
       }
 
-      const json = (await res.json()) as T;
+      const body = await parse(res);
       recordSuccess(provider);
       log.debug('provider_call', { provider, ms: Date.now() - started, attempt });
-      return json;
+      return body;
     } catch (err) {
       lastErr = err;
       // A caller-thrown HttpError has already been accounted for above.

@@ -120,6 +120,7 @@ export const coingecko: Provider = {
   id: 'coingecko',
   label: 'CoinGecko',
   capabilities: ['crypto.quote', 'crypto.metrics', 'ohlcv', 'search'],
+  assetKinds: ['crypto'],
 
   // Public tier requires no credential, so this provider is always available.
   isConfigured: () => true,

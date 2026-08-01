@@ -358,6 +358,17 @@ export interface Provider {
   readonly id: string;
   readonly label: string;
   readonly capabilities: readonly Capability[];
+  /**
+   * Asset classes this provider can serve. Omitted means both.
+   *
+   * `ohlcv` is one capability covering two asset classes, so without this the
+   * registry asks Binance for AAPL bars on every equity scored. Those calls do
+   * not merely waste a round trip — they fail, and enough of them open Binance's
+   * circuit breaker, at which point an equity scan has broken *crypto* pricing
+   * for the next minute. Declaring the class lets the registry skip them locally
+   * instead of learning it from the network each time.
+   */
+  readonly assetKinds?: readonly AssetKind[];
   /** Whether required credentials are present. Unconfigured providers are skipped. */
   isConfigured(): boolean;
 

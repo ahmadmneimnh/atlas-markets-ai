@@ -70,6 +70,7 @@ export const coinbase: Provider = {
   id: 'coinbase',
   label: 'Coinbase',
   capabilities: ['crypto.quote', 'ohlcv'],
+  assetKinds: ['crypto'],
 
   // Public market-data endpoints are unauthenticated.
   isConfigured: () => true,

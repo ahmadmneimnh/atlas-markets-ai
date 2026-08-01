@@ -164,6 +164,7 @@ export const fmp: Provider = {
   id: 'fmp',
   label: 'Financial Modeling Prep',
   capabilities: ['quote', 'profile', 'fundamentals', 'news', 'analyst'],
+  assetKinds: ['equity'],
 
   isConfigured: () => Boolean(env.providers.fmp),
 

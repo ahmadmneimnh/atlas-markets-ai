@@ -42,6 +42,7 @@ export const binance: Provider = {
   id: 'binance',
   label: 'Binance',
   capabilities: ['crypto.quote', 'ohlcv'],
+  assetKinds: ['crypto'],
 
   isConfigured: () => true, // public endpoints need no credential
 

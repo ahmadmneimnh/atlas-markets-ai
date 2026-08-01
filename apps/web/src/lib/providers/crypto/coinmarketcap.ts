@@ -76,6 +76,7 @@ export const coinmarketcap: Provider = {
   id: 'coinmarketcap',
   label: 'CoinMarketCap',
   capabilities: ['crypto.quote', 'crypto.metrics', 'search'],
+  assetKinds: ['crypto'],
 
   isConfigured: () => Boolean(env.providers.coinMarketCap),
 

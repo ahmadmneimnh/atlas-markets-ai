@@ -53,7 +53,7 @@ export async function buildContext(ref: AssetRef): Promise<AssetContext> {
 
   const [quote, ohlcv, fundamentals, cryptoMetrics, news, analyst] = await Promise.all([
     market.quote(ref.symbol, ref.kind),
-    market.ohlcv(ref.symbol, '1d', 260),
+    market.ohlcv(ref.symbol, '1d', 260, ref.kind),
     isCrypto
       ? Promise.resolve({ ok: false, reason: 'not_supported' } as const)
       : market.fundamentals(ref.symbol),

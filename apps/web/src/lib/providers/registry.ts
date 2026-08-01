@@ -3,6 +3,7 @@ import { log } from '@/lib/logger';
 import { cached, cacheKey, resultTtl, TTL } from '@/lib/cache';
 import type {
   Provider,
+  AssetKind,
   Capability,
   ProviderResult,
   Quote,
@@ -28,6 +29,7 @@ import { twelvedata } from './equity/twelvedata';
 import { fmp } from './equity/fmp';
 import { yahoo } from './equity/yahoo';
 import { sec } from './equity/sec';
+import { stooq } from './equity/stooq';
 import { coingecko } from './crypto/coingecko';
 import { binance } from './crypto/binance';
 import { coinmarketcap } from './crypto/coinmarketcap';
@@ -58,6 +60,7 @@ const ALL: Provider[] = [
   alternativeme,
   newsapi,
   sec,
+  stooq,
 ];
 
 /**
@@ -75,6 +78,11 @@ const ALL: Provider[] = [
  *  - **Alpha Vantage is deliberately near-last for OHLCV.** 25 requests per *day*
  *    means putting it earlier would exhaust it during a single screener load and
  *    leave nothing for the case it exists to cover.
+ *  - **Stooq sits just above Yahoo for OHLCV.** It is the only equity price
+ *    history in this list that needs no credential, which makes it the
+ *    difference between a Finnhub-only deployment scoring 45% of the weight with
+ *    no price levels at all, and scoring the full set. It is below the keyed
+ *    vendors because it serves daily bars only and publishes no uptime promise.
  *  - **Binance leads crypto quotes, Coinbase second.** Binance has the deeper book
  *    on most pairs; Coinbase prices in real USD rather than USDT, so it is the
  *    better answer whenever the peg is under stress — exactly when the fallthrough
@@ -82,7 +90,16 @@ const ALL: Provider[] = [
  */
 const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
   quote: ['finnhub', 'twelvedata', 'fmp', 'polygon', 'yahoo'],
-  ohlcv: ['binance', 'coinbase', 'twelvedata', 'polygon', 'alphavantage', 'coingecko', 'yahoo'],
+  ohlcv: [
+    'binance',
+    'coinbase',
+    'twelvedata',
+    'polygon',
+    'alphavantage',
+    'coingecko',
+    'stooq',
+    'yahoo',
+  ],
   fundamentals: ['fmp', 'finnhub', 'alphavantage'],
   profile: ['finnhub', 'fmp', 'polygon'],
   // NewsAPI last: the others return vendor-tagged company news, while NewsAPI
@@ -124,17 +141,27 @@ function envOverride(cap: Capability): string[] {
  * instead, and the only thing reaching the logs is that fallback rate-limiting.
  * Naming the skipped provider turns a two-hour investigation into one log line.
  */
-function candidates(cap: Capability): { usable: Provider[]; unconfigured: string[] } {
+function candidates(
+  cap: Capability,
+  kind?: AssetKind,
+): { usable: Provider[]; unconfigured: string[] } {
   const order = envOverride(cap).length > 0 ? envOverride(cap) : (DEFAULT_ORDER[cap] ?? []);
   const byId = new Map(ALL.map((p) => [p.id, p]));
 
+  // Filtered only when a kind is supplied. `search` deliberately fans out across
+  // both asset classes, and narrowing it here would drop the crypto results.
+  const serves = (p: Provider): boolean =>
+    kind === undefined || p.assetKinds === undefined || p.assetKinds.includes(kind);
+
   const ranked = order
     .map((id) => byId.get(id))
-    .filter((p): p is Provider => Boolean(p) && p!.capabilities.includes(cap));
+    .filter((p): p is Provider => Boolean(p) && p!.capabilities.includes(cap) && serves(p!));
 
   // Any provider supporting the capability but absent from the explicit order is
   // appended, so a newly added adapter is usable before anyone updates config.
-  const extras = ALL.filter((p) => p.capabilities.includes(cap) && !ranked.includes(p));
+  const extras = ALL.filter(
+    (p) => p.capabilities.includes(cap) && serves(p) && !ranked.includes(p),
+  );
 
   const all = [...ranked, ...extras];
   return {
@@ -153,8 +180,9 @@ function candidates(cap: Capability): { usable: Provider[]; unconfigured: string
 async function resolve<T>(
   cap: Capability,
   invoke: (p: Provider) => Promise<ProviderResult<T>> | undefined,
+  kind?: AssetKind,
 ): Promise<ProviderResult<T>> {
-  const { usable, unconfigured } = candidates(cap);
+  const { usable, unconfigured } = candidates(cap, kind);
 
   if (usable.length === 0) {
     // Naming the providers that *would* have served this is the difference
@@ -213,15 +241,22 @@ export const market = {
     );
   },
 
+  /**
+   * `kind` is optional for backwards compatibility but should always be passed.
+   * Without it the registry asks Binance for equity bars — a guaranteed failure
+   * that also counts against Binance's circuit breaker, so a scan over equities
+   * ends up disabling crypto pricing.
+   */
   async ohlcv(
     symbol: string,
     interval: '1d' | '1h' | '1w' = '1d',
     limit = 260,
+    kind?: AssetKind,
   ): Promise<ProviderResult<OhlcvSeries>> {
     return cached(
       cacheKey('ohlcv', symbol, interval, limit),
       TTL.ohlcvDaily,
-      () => resolve<OhlcvSeries>('ohlcv', (p) => p.ohlcv?.(symbol, interval, limit)),
+      () => resolve<OhlcvSeries>('ohlcv', (p) => p.ohlcv?.(symbol, interval, limit), kind),
       resultTtl(TTL.ohlcvDaily),
     );
   },

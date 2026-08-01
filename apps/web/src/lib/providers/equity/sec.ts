@@ -109,6 +109,7 @@ export const sec: Provider = {
   id: 'sec',
   label: 'SEC EDGAR',
   capabilities: ['filings'],
+  assetKinds: ['equity'],
   isConfigured: () => Boolean(env.secUserAgent),
 
   async filings(symbol: string, limit: number): Promise<ProviderResult<Filing[]>> {

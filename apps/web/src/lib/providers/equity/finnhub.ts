@@ -107,6 +107,7 @@ export const finnhub: Provider = {
     'earnings',
     'economic.calendar',
   ],
+  assetKinds: ['equity'],
 
   isConfigured: () => Boolean(env.providers.finnhub),
 

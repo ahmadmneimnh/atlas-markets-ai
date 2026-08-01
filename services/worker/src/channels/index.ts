@@ -106,6 +106,12 @@ export const channels: Record<
 
     // Imported lazily so the worker starts without nodemailer present, and so an
     // email-less deployment never pays for the module.
+    //
+    // Runtime is nodemailer 9 (8.x carries a published advisory), but
+    // `@types/nodemailer` has no 9.x on DefinitelyTyped yet, so the types are
+    // 8.0.1. The surface used here — createTransport({host, port, auth}) and
+    // sendMail({from, to, subject, text}) — is unchanged between the two, so the
+    // mismatch is inert. Worth re-checking when 9.x types ship.
     const nodemailer = await import('nodemailer').catch(() => null);
     if (!nodemailer) return failure('not_configured: nodemailer is not installed', false);
 

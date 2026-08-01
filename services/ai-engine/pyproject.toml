@@ -27,7 +27,12 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ANN", "RUF"]
-ignore = ["ANN101", "ANN102"]
+# ANN101/ANN102 annotate `self` and `cls`, which is noise.
+# B008 forbids function calls in argument defaults — correct for most code, and
+# exactly wrong for FastAPI, where `Depends()` / `Header()` in a default IS the
+# framework's dependency-injection mechanism. Suppressed globally rather than
+# with a noqa at each call site, since every route signature would need one.
+ignore = ["ANN101", "ANN102", "B008"]
 
 [tool.mypy]
 python_version = "3.11"

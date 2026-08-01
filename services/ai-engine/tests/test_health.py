@@ -92,5 +92,9 @@ def test_configured_api_key_is_enforced() -> None:
     }
 
     assert guarded.post("/v1/score", json=body).status_code == 401
-    assert guarded.post("/v1/score", json=body, headers={"X-Atlas-Key": "wrong"}).status_code == 401
-    assert guarded.post("/v1/score", json=body, headers={"X-Atlas-Key": "s3cret"}).status_code == 501
+    wrong = guarded.post("/v1/score", json=body, headers={"X-Atlas-Key": "wrong"})
+    correct = guarded.post("/v1/score", json=body, headers={"X-Atlas-Key": "s3cret"})
+    assert wrong.status_code == 401
+    # 501 rather than 200: the key was accepted, and the engine then declined to
+    # score because no factor models are registered.
+    assert correct.status_code == 501

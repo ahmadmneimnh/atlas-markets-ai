@@ -7,6 +7,7 @@ per-service parser.
 
 import logging
 import sys
+from typing import cast
 
 import structlog
 
@@ -42,4 +43,7 @@ def configure_logging() -> None:
 
 
 def get_logger() -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(service="ai-engine")
+    # structlog.get_logger is typed as returning Any because the bound class is
+    # chosen at configure() time. The cast states what configure_logging above
+    # actually configures — narrowing here rather than at every call site.
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(service="ai-engine"))

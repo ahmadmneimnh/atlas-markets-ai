@@ -1,6 +1,9 @@
 import { providerStatus } from '@/lib/providers/registry';
 import { SCORERS } from '@/lib/analysis/engine';
-import { Card, SectionTitle } from '@/components/primitives';
+import { Card, SectionTitle, Unavailable } from '@/components/primitives';
+import { isDatabaseConfigured } from '@atlas/db';
+import { can, currentUser, isAuthConfigured } from '@/lib/auth';
+import { AdminConsole } from '@/components/admin/console';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +12,23 @@ export const dynamic = 'force-dynamic';
  * credentials and which scoring factors are live, which is the first question to
  * ask when a score looks thin.
  */
-export default function AdminPage() {
+export default async function AdminPage() {
+  /**
+   * Two tiers on one page.
+   *
+   * `/admin` is in middleware's protected list, so reaching here at all requires
+   * a session. The read-only system view below then shows any signed-in user
+   * which providers are configured and what the factor weights are — never a key
+   * value — because that is the first question to ask when a score looks thin.
+   *
+   * The write path is gated further, on the `admin:read` capability, and the
+   * check is here on the server. A client-side check would hide the buttons
+   * while leaving every /api/admin route wide open; those routes each call
+   * `requirePermission` themselves for exactly that reason.
+   */
+  const user = isAuthConfigured ? await currentUser() : null;
+  const isAdmin = can(user?.role, 'admin:read');
+
   const providers = providerStatus();
   const configured = providers.filter((p) => p.configured).length;
 
@@ -67,6 +86,23 @@ export default function AdminPage() {
           ))}
         </Card>
       </section>
+
+      {/* Administrative write path — capability-gated on the server. */}
+      {isAdmin ? (
+        <AdminConsole />
+      ) : (
+        <section>
+          <SectionTitle hint="requires an administrator account">Administration</SectionTitle>
+          <Unavailable
+            title={user ? 'Your account is not an administrator' : 'Sign in as an administrator'}
+            reason={
+              isDatabaseConfigured
+                ? 'User management, feature flags, queues and the audit log require the admin role.'
+                : 'This deployment has no database, so there are no accounts to administer.'
+            }
+          />
+        </section>
+      )}
     </div>
   );
 }

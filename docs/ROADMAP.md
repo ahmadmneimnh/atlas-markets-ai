@@ -5,9 +5,8 @@ designed but not wired up — a roadmap that overstates completion is worse than
 
 Legend: ✅ built and verified · ⚠️ partial · ❌ not started
 
-**Phases 1–8 and 10 are complete.** Phase 9 (admin write-path) is the remaining
-gap. What is genuinely unverified rather than unbuilt is listed under "The one
-thing to check first" at the end.
+**All ten phases are complete.** What is genuinely unverified rather than
+unbuilt is listed under "The one thing to check first" at the end.
 
 ---
 
@@ -150,20 +149,32 @@ distinguish retryable from permanent.
 
 ---
 
-## Phase 9 — Admin panel ⚠️ **(the remaining gap)**
+## Phase 9 — Admin panel ✅
 
-- ✅ Read-only system view: provider configuration, capability map, factor
-  weights. `/api/health` exposes the same without leaking key values.
-- ❌ User management, key rotation, feature-flag editing, queue inspection, log
-  viewer. The permission set (`admin:users`, `admin:flags`, `admin:keys`,
-  `admin:queues`, `audit:read`) and the `AuditLog` model exist; the write path
-  does not.
+- Read-only system view: provider configuration, capability map, factor weights.
+  `/api/health` exposes the same without leaking key values.
+- User management: list, search, role changes, suspend and reinstate, guarded so
+  the last administrator cannot be demoted, banned or self-demoted.
+- Feature flags: toggle and percentage rollout, with `null` (ungated) kept
+  distinct from `0` (enabled for nobody).
+- Queue inspection: waiting and failed counts read from BullMQ's key layout in
+  Redis, without instantiating a Queue — doing so would write bookkeeping keys
+  and mutate the state being reported.
+- Audit log: read-only over HTTP. There is no DELETE and no PATCH; an audit log
+  an administrator can edit is not an audit log.
+
+Every mutation writes an audit record with before and after, in the same
+transaction as the change — a failed audit write fails the request, because a
+change nobody can attribute is the situation the log exists to prevent.
+
+❌ API key rotation from the panel (the model and permission exist; the issuance
+flow does not).
 
 ---
 
 ## Phase 10 — Production preparation ✅
 
-- 124 TypeScript tests and 7 Python tests; clean strict typecheck across four
+- 136 TypeScript tests and 7 Python tests; clean strict typecheck across four
   workspaces; clean lint; production build.
 - GitHub Actions CI: typecheck, lint, test, format check, build, Prisma schema
   validation, and ruff + mypy + pytest for the engine.

@@ -2,7 +2,7 @@
   "name": "atlas-markets-ai",
   "version": "0.1.0",
   "private": true,
-  "description": "Atlas Markets AI — premium financial intelligence platform (monorepo root)",
+  "description": "Atlas Markets AI \u2014 premium financial intelligence platform (monorepo root)",
   "engines": {
     "node": ">=20.11.0",
     "npm": ">=10.0.0"
@@ -43,6 +43,7 @@
     "prettier": "^3.4.2"
   },
   "overrides": {
-    "postcss": "^8.5.25"
+    "postcss": "^8.5.25",
+    "@prisma/client": "^6.19.3"
   }
 }

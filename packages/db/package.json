@@ -25,7 +25,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.1.0"
+    "@prisma/client": "^6.19.3"
   },
   "devDependencies": {
     "@atlas/config": "*",

@@ -62,7 +62,7 @@ npm run db:push
 ## Verify it yourself
 
 ```bash
-npm test                  # 124 unit tests across the workspaces
+npm test                  # 136 unit tests across the workspaces
 npm run typecheck         # strict tsc --noEmit, four workspaces
 npm run lint
 npm run build             # production build
@@ -145,7 +145,7 @@ apps/web/                 Next.js 15 — UI + BFF API routes
   src/lib/providers/      THE SWAP SEAM — capability-routed adapters
   src/lib/http.ts         timeout · jittered retry · rate limit · circuit breaker
   src/lib/cache.ts        two-tier TTL cache (failures cached briefly too)
-  tests/                  124 unit tests
+  tests/                  136 unit tests
 services/worker/          BullMQ consumers + repeatable schedules
 services/ai-engine/       Python 3.11 · FastAPI · scoring microservice
 packages/core/            cross-service contracts (queues, scoring wire types)
@@ -185,15 +185,15 @@ packages, dependencies point inward: nothing in `packages/` imports from `apps/`
 
 ## Status
 
-**Phases 1–8 and 10 are complete; Phase 9 (the admin write-path) is the
-remaining gap.** See [docs/ROADMAP.md](docs/ROADMAP.md) for the per-phase
-breakdown.
+**All ten phases are complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for the
+per-phase breakdown.
 
 What is built: the monorepo and its four deployable units, authentication with
 four sign-in methods, ten market-data providers across twenty venues, the
 six-factor scoring engine with risk explanations, the full dashboard, stock and
 crypto detail pages, portfolios with lot-level cost basis, the alert engine and
-its notification channels, CI, and the security and deployment work.
+its notification channels, the admin console with an append-only audit log, CI,
+and the security and deployment work.
 
 **What has not been verified: the adapters have never run against live provider
 endpoints.** This build environment blocks market-data hosts, so parsing is

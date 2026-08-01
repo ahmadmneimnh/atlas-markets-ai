@@ -58,6 +58,18 @@ export interface OhlcvSeries {
   asOf: Date;
 }
 
+/**
+ * Company statistics, in units fixed by this interface rather than by whichever
+ * vendor answered:
+ *
+ *  - `marketCap` and `freeCashFlow` are in whole currency units (Finnhub reports
+ *    market cap in millions; the adapter scales it).
+ *  - every rate — margins, yields, growth, returns — is a percentage, so 25.3 means
+ *    25.3% (Alpha Vantage reports these as fractions; the adapter scales them).
+ *
+ * Getting this wrong is not a display bug: a P/E of 0.253 shown as 25.3% is an
+ * invented figure, which is exactly what this app promises never to show.
+ */
 export interface Fundamentals {
   symbol: string;
   peRatio?: number;
@@ -160,6 +172,13 @@ export const unavailable = (
 
 // ── Provider contract ───────────────────────────────────────────────────────────
 
+/**
+ * Crypto and equity capabilities are named separately even where the returned shape
+ * is identical. The vendors do not overlap — asking Binance for AAPL returns "no such
+ * symbol", which the registry would read as an affirmative "this asset does not
+ * exist" and stop searching. Splitting the capability keeps each asset class routed
+ * only to vendors that can actually answer for it.
+ */
 export type Capability =
   | 'quote'
   | 'ohlcv'
@@ -167,6 +186,7 @@ export type Capability =
   | 'profile'
   | 'news'
   | 'crypto.quote'
+  | 'crypto.ohlcv'
   | 'crypto.metrics'
   | 'search';
 

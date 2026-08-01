@@ -1,12 +1,13 @@
+import { coverage } from './env';
 import type { AssetRef } from './providers/types';
 
 /**
- * The default tracked universe.
+ * The default tracked list shown on the dashboard.
  *
- * This is *identifier metadata* — ticker, venue, display name — not market data.
- * No price, volume or valuation appears here; those are always fetched. In a full
- * deployment this table is seeded into the `Asset` table and maintained from each
- * exchange's listing feed, and this file becomes the bootstrap seed.
+ * This is *identifier metadata* — ticker, venue, display name — not market data. No
+ * price, volume or valuation appears here; those are always fetched live. Searching
+ * reaches every symbol the providers know about; this list only decides what the
+ * homepage shows before you search for anything.
  */
 
 export interface UniverseEntry extends AssetRef {
@@ -40,6 +41,18 @@ export const EQUITY_UNIVERSE: UniverseEntry[] = [
 ];
 
 export const UNIVERSE: UniverseEntry[] = [...CRYPTO_UNIVERSE, ...EQUITY_UNIVERSE];
+
+/**
+ * What the dashboard should try to price right now.
+ *
+ * Stocks are omitted when no stock provider is configured — requesting ten quotes
+ * that are all guaranteed to fail would add a second of latency to every refresh to
+ * produce ten identical error rows. The dashboard shows one clear "Insufficient
+ * Data" panel for the whole section instead.
+ */
+export function trackedUniverse(): UniverseEntry[] {
+  return coverage().stocks ? UNIVERSE : CRYPTO_UNIVERSE;
+}
 
 export function findAsset(symbol: string, kind?: 'equity' | 'crypto'): UniverseEntry | undefined {
   const upper = symbol.toUpperCase();

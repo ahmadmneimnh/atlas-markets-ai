@@ -1,64 +1,65 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Premium dark theme: near-black canvas, glass surfaces, gold accent.
- * Semantic tokens only — components never reference raw hex, so the palette
- * can be retuned in one place.
+ * Semantic tokens only. Every colour resolves to a CSS variable defined in
+ * globals.css for both themes, so a component written once renders correctly in
+ * light and dark without a single `dark:` variant on a colour utility.
+ *
+ * The variables hold space-separated RGB channels rather than hex, which is what
+ * keeps Tailwind's opacity syntax working (`bg-surface/60`).
  */
+const rgb = (name: string) => `rgb(var(${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        canvas: {
-          DEFAULT: '#05060a',
-          raised: '#0b0d14',
-          sunken: '#020308',
-        },
-        glass: {
-          DEFAULT: 'rgba(255,255,255,0.035)',
-          strong: 'rgba(255,255,255,0.06)',
-          border: 'rgba(255,255,255,0.09)',
-        },
-        gold: {
-          DEFAULT: '#d4af37',
-          soft: '#e8cd7a',
-          deep: '#a8862a',
-          glow: 'rgba(212,175,55,0.18)',
-        },
+        canvas: rgb('--c-canvas'),
+        surface: rgb('--c-surface'),
+        'surface-raised': rgb('--c-surface-raised'),
+        line: rgb('--c-line'),
         ink: {
-          DEFAULT: '#f4f5f7',
-          muted: '#9aa1ae',
-          faint: '#5e6572',
+          DEFAULT: rgb('--c-ink'),
+          muted: rgb('--c-ink-muted'),
+          faint: rgb('--c-ink-faint'),
         },
-        // Directional colors. Deliberately not pure red/green: these sit on a
-        // near-black canvas where saturated primaries vibrate.
-        bull: '#2ecc8f',
-        bear: '#ff5d6c',
-        warn: '#f0a95c',
+        accent: {
+          DEFAULT: rgb('--c-accent'),
+          soft: rgb('--c-accent-soft'),
+        },
+        // Directional colours are per-theme tokens: the green that reads as "up"
+        // on a white background is too dark to see on a near-black one.
+        bull: rgb('--c-bull'),
+        bear: rgb('--c-bear'),
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
-      backdropBlur: { xs: '2px' },
       boxShadow: {
-        glass: '0 8px 32px rgba(0,0,0,0.55)',
-        'gold-glow': '0 0 24px rgba(212,175,55,0.15)',
+        card: '0 1px 2px rgb(var(--c-shadow) / 0.06), 0 4px 16px rgb(var(--c-shadow) / 0.05)',
+        lift: '0 2px 4px rgb(var(--c-shadow) / 0.08), 0 12px 28px rgb(var(--c-shadow) / 0.10)',
       },
       keyframes: {
         'fade-up': {
-          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
+        'pulse-dot': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.3' },
+        },
       },
       animation: {
-        'fade-up': 'fade-up 0.4s cubic-bezier(0.16,1,0.3,1) both',
-        shimmer: 'shimmer 1.8s linear infinite',
+        'fade-up': 'fade-up 0.35s cubic-bezier(0.16,1,0.3,1) both',
+        shimmer: 'shimmer 1.6s linear infinite',
+        'pulse-dot': 'pulse-dot 2.4s ease-in-out infinite',
       },
     },
   },

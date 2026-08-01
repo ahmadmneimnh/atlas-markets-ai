@@ -122,7 +122,10 @@ export const finnhub: Provider = {
       setNumber(out, 'roe', num(m['roeTTM']));
       setNumber(out, 'roic', num(m['roicTTM']));
       setNumber(out, 'dividendYield', num(m['dividendYieldIndicatedAnnual']));
-      setNumber(out, 'marketCap', num(m['marketCapitalization']));
+      // Finnhub reports market capitalisation in millions; the domain type is in
+      // whole currency units.
+      const capMillions = num(m['marketCapitalization']);
+      setNumber(out, 'marketCap', capMillions === undefined ? undefined : capMillions * 1e6);
       setNumber(out, 'earningsGrowthYoY', num(m['epsGrowthTTMYoy']));
       setNumber(out, 'freeCashFlow', num(m['freeCashFlowTTM']));
 

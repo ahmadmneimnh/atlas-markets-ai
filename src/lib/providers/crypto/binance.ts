@@ -34,7 +34,7 @@ const n = (s: string): number => Number(s);
 export const binance: Provider = {
   id: 'binance',
   label: 'Binance',
-  capabilities: ['crypto.quote', 'ohlcv'],
+  capabilities: ['crypto.quote', 'crypto.ohlcv'],
 
   isConfigured: () => true, // public endpoints need no credential
 

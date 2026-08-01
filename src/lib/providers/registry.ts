@@ -3,7 +3,7 @@ import { log } from '@/lib/logger';
 import { cached, cacheKey, resultTtl, TTL } from '@/lib/cache';
 import type {
   Provider, Capability, ProviderResult, Quote, OhlcvSeries, Fundamentals,
-  CompanyProfile, NewsArticle, CryptoMetrics, SearchHit, Unavailable,
+  CompanyProfile, CryptoMetrics, SearchHit, Unavailable, AssetKind,
 } from './types';
 import { unavailable } from './types';
 
@@ -15,25 +15,30 @@ import { binance } from './crypto/binance';
 /**
  * Capability-routed provider registry.
  *
- * Call sites ask for a capability ("give me a quote"), never for a vendor. The
- * registry picks among configured providers by priority and falls through on
- * failure. Adding or swapping a vendor therefore touches this file's ALL list and
- * nothing else in the application.
+ * Call sites ask for a capability ("give me a quote for this crypto"), never for a
+ * vendor. The registry picks among configured providers by priority and falls
+ * through on failure, so adding or swapping a data source touches this file's ALL
+ * list and nothing else in the application.
  */
 
 const ALL: Provider[] = [finnhub, alphavantage, coingecko, binance];
 
 /**
- * Default ordering per capability, best-first. Overridable per deployment via
- * ATLAS_PRIORITY_* env vars — that override is the documented swap mechanism.
+ * Default ordering per capability, best first. Overridable per deployment through
+ * the BB_PRIORITY_* env vars.
+ *
+ * Crypto quotes lead with CoinGecko because it prices against real USD and covers
+ * far more coins; Binance is the fallback and the preferred chart source, since its
+ * klines carry real traded volume.
  */
 const DEFAULT_ORDER: Partial<Record<Capability, string[]>> = {
   quote: ['finnhub'],
-  ohlcv: ['binance', 'alphavantage', 'coingecko'],
+  ohlcv: ['alphavantage'],
   fundamentals: ['finnhub', 'alphavantage'],
   profile: ['finnhub'],
   news: ['finnhub'],
-  'crypto.quote': ['binance', 'coingecko'],
+  'crypto.quote': ['coingecko', 'binance'],
+  'crypto.ohlcv': ['binance', 'coingecko'],
   'crypto.metrics': ['coingecko'],
   search: ['finnhub', 'coingecko'],
 };
@@ -42,22 +47,23 @@ function envOverride(cap: Capability): string[] {
   switch (cap) {
     case 'quote': return env.priority.quote;
     case 'ohlcv': return env.priority.ohlcv;
-    case 'fundamentals': return env.priority.fundamentals;
-    case 'news': return env.priority.news;
+    case 'crypto.quote': return env.priority.cryptoQuote;
+    case 'crypto.ohlcv': return env.priority.cryptoOhlcv;
     default: return [];
   }
 }
 
 /** Configured providers implementing `cap`, in resolution order. */
 function candidates(cap: Capability): Provider[] {
-  const order = envOverride(cap).length > 0 ? envOverride(cap) : (DEFAULT_ORDER[cap] ?? []);
+  const override = envOverride(cap);
+  const order = override.length > 0 ? override : (DEFAULT_ORDER[cap] ?? []);
   const byId = new Map(ALL.map((p) => [p.id, p]));
 
   const ranked = order
     .map((id) => byId.get(id))
-    .filter((p): p is Provider => Boolean(p) && p!.capabilities.includes(cap));
+    .filter((p): p is Provider => p !== undefined && p.capabilities.includes(cap));
 
-  // Any provider supporting the capability but absent from the explicit order is
+  // A provider supporting the capability but absent from the explicit order is
   // appended, so a newly added adapter is usable before anyone updates config.
   const extras = ALL.filter((p) => p.capabilities.includes(cap) && !ranked.includes(p));
 
@@ -67,9 +73,9 @@ function candidates(cap: Capability): Provider[] {
 /**
  * Tries each candidate in order, returning the first success.
  *
- * `not_found` short-circuits: if a provider affirmatively reports the symbol does
- * not exist, asking three more vendors the same question wastes quota on all of
- * them to reach the same answer.
+ * `not_found` short-circuits: if a provider affirmatively reports that the symbol
+ * does not exist, asking the remaining vendors the same question spends their quota
+ * to reach the same answer.
  */
 async function resolve<T>(
   cap: Capability,
@@ -103,7 +109,7 @@ async function resolve<T>(
 // ── Public API ──────────────────────────────────────────────────────────────────
 
 export const market = {
-  async quote(symbol: string, kind: 'equity' | 'crypto'): Promise<ProviderResult<Quote>> {
+  async quote(symbol: string, kind: AssetKind): Promise<ProviderResult<Quote>> {
     const cap: Capability = kind === 'crypto' ? 'crypto.quote' : 'quote';
     const ttl = kind === 'crypto' ? TTL.quoteCrypto : TTL.quoteEquity;
 
@@ -115,15 +121,29 @@ export const market = {
     );
   },
 
+  /** Quotes for many assets at once. Failures are returned, never dropped. */
+  async quotes(
+    refs: { symbol: string; kind: AssetKind }[],
+  ): Promise<{ symbol: string; kind: AssetKind; result: ProviderResult<Quote> }[]> {
+    return Promise.all(
+      refs.map(async (ref) => ({
+        ...ref,
+        result: await market.quote(ref.symbol, ref.kind),
+      })),
+    );
+  },
+
   async ohlcv(
     symbol: string,
+    kind: AssetKind,
     interval: '1d' | '1h' | '1w' = '1d',
-    limit = 260,
+    limit = 365,
   ): Promise<ProviderResult<OhlcvSeries>> {
+    const cap: Capability = kind === 'crypto' ? 'crypto.ohlcv' : 'ohlcv';
     return cached(
-      cacheKey('ohlcv', symbol, interval, limit),
+      cacheKey('ohlcv', kind, symbol, interval, limit),
       TTL.ohlcvDaily,
-      () => resolve<OhlcvSeries>('ohlcv', (p) => p.ohlcv?.(symbol, interval, limit)),
+      () => resolve<OhlcvSeries>(cap, (p) => p.ohlcv?.(symbol, interval, limit)),
       resultTtl(TTL.ohlcvDaily),
     );
   },
@@ -146,15 +166,6 @@ export const market = {
     );
   },
 
-  async news(symbol: string | null, limit = 20): Promise<ProviderResult<NewsArticle[]>> {
-    return cached(
-      cacheKey('news', symbol ?? 'market', limit),
-      TTL.news,
-      () => resolve<NewsArticle[]>('news', (p) => p.news?.(symbol, limit)),
-      resultTtl(TTL.news),
-    );
-  },
-
   async cryptoMetrics(symbol: string): Promise<ProviderResult<CryptoMetrics>> {
     return cached(
       cacheKey('cryptometrics', symbol),
@@ -165,8 +176,8 @@ export const market = {
   },
 
   async search(query: string): Promise<ProviderResult<SearchHit[]>> {
-    // Search fans out rather than falling through: equity and crypto results come
-    // from different vendors and the user wants both in one list.
+    // Search fans out rather than falling through: stocks and coins come from
+    // different vendors and the user wants both in one list.
     const providers = candidates('search');
     if (providers.length === 0) return unavailable('no_provider_configured', 'no search provider');
 
@@ -181,8 +192,10 @@ export const market = {
   },
 };
 
-/** Provider health for the admin panel. */
-export function providerStatus(): { id: string; label: string; configured: boolean; capabilities: readonly Capability[] }[] {
+/** Provider configuration report, used by /api/health. */
+export function providerStatus(): {
+  id: string; label: string; configured: boolean; capabilities: readonly Capability[];
+}[] {
   return ALL.map((p) => ({
     id: p.id,
     label: p.label,

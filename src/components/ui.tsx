@@ -1,11 +1,12 @@
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
-import type { Recommendation, Direction } from '@/lib/analysis/types';
+import { formatPercent } from '@/lib/format';
+import { explainUnavailable, type UnavailableDTO } from '@/lib/dto';
 
 /**
- * Presentational primitives. These components never fetch data and never import
- * from lib/providers — a component that can reach a provider is a component that
- * will eventually fetch during render.
+ * Presentational primitives. Nothing here fetches data or imports from
+ * `lib/providers` — a component that can reach a provider is a component that will
+ * eventually fetch during render.
  */
 
 export function Card({
@@ -17,207 +18,174 @@ export function Card({
   className?: string;
   hover?: boolean;
 }) {
-  return (
-    <div className={clsx('glass rounded-2xl', hover && 'glass-hover', className)}>{children}</div>
-  );
+  return <div className={clsx('card', hover && 'card-hover', className)}>{children}</div>;
 }
 
-export function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }) {
-  return (
-    <div className="mb-4 flex items-baseline justify-between gap-4">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-ink-muted">{children}</h2>
-      {hint ? <span className="text-xs text-ink-faint">{hint}</span> : null}
-    </div>
-  );
-}
-
-// ── Provenance ──────────────────────────────────────────────────────────────────
-
-/**
- * Every displayed number carries its origin. This is rendered as a required
- * companion to values rather than an optional tooltip: the product's core promise
- * is that a user can always see where a figure came from.
- */
-export function Provenance({ source, asOf }: { source: string; asOf?: Date }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-faint">
-      <span className="inline-block h-1 w-1 rounded-full bg-gold/60" />
-      {source}
-      {asOf ? <span className="normal-case tracking-normal">· {formatRelative(asOf)}</span> : null}
-    </span>
-  );
-}
-
-export function formatRelative(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-// ── Empty / unavailable states ──────────────────────────────────────────────────
-
-/**
- * The "no data" state. This is a first-class component because the alternative —
- * rendering a zero, a dash, or a plausible placeholder — is precisely the failure
- * this product must not have.
- */
-export function Unavailable({
-  title,
-  reason,
+export function SectionTitle({
+  children,
   hint,
+  action,
 }: {
-  title: string;
-  reason?: string;
+  children: ReactNode;
   hint?: string;
+  action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-glass-border/70 px-6 py-10 text-center">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full border border-glass-border text-ink-faint">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 8v5M12 16.5v.01" strokeLinecap="round" />
-        </svg>
-      </div>
-      <p className="text-sm font-medium text-ink-muted">{title}</p>
-      {reason ? <p className="mt-1.5 max-w-md text-xs leading-relaxed text-ink-faint">{reason}</p> : null}
-      {hint ? (
-        <p className="mt-3 rounded-md border border-glass-border bg-canvas-sunken px-3 py-1.5 font-mono text-[11px] text-ink-faint">
-          {hint}
-        </p>
-      ) : null}
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
+        {children}
+      </h2>
+      {action ?? (hint ? <span className="text-xs text-ink-faint">{hint}</span> : null)}
     </div>
   );
 }
 
-// ── Recommendation ──────────────────────────────────────────────────────────────
-
-const REC_STYLE: Record<Recommendation, { label: string; className: string }> = {
-  STRONG_BUY: { label: 'Strong Buy', className: 'border-bull/40 bg-bull/12 text-bull' },
-  BUY: { label: 'Buy', className: 'border-bull/30 bg-bull/8 text-bull/90' },
-  HOLD: { label: 'Hold', className: 'border-glass-border bg-glass text-ink-muted' },
-  SELL: { label: 'Sell', className: 'border-bear/30 bg-bear/8 text-bear/90' },
-  STRONG_SELL: { label: 'Strong Sell', className: 'border-bear/40 bg-bear/12 text-bear' },
-};
-
-export function RecommendationBadge({
-  recommendation,
-  size = 'md',
+/**
+ * The "we do not have this" state.
+ *
+ * This is a first-class component because the alternative — rendering a zero, a
+ * placeholder price, or a flat line — is exactly the failure this product must not
+ * have. The headline wording is fixed at "Insufficient Data" so it reads the same
+ * everywhere, with the specific cause underneath.
+ */
+export function InsufficientData({
+  unavailable,
+  what,
+  hint,
+  compact = false,
 }: {
-  recommendation: Recommendation;
-  size?: 'sm' | 'md' | 'lg';
+  unavailable?: UnavailableDTO | null;
+  /** What was being looked up, e.g. "stock prices". */
+  what?: string;
+  /** Concrete next step, e.g. an env var to set. */
+  hint?: ReactNode;
+  compact?: boolean;
 }) {
-  const style = REC_STYLE[recommendation];
-  return (
-    <span
-      className={clsx(
-        'inline-flex items-center rounded-full border font-semibold uppercase tracking-wider',
-        style.className,
-        size === 'sm' && 'px-2 py-0.5 text-[10px]',
-        size === 'md' && 'px-3 py-1 text-xs',
-        size === 'lg' && 'px-4 py-1.5 text-sm',
-      )}
-    >
-      {style.label}
-    </span>
-  );
-}
-
-/** Radial score dial, 0–100. */
-export function ScoreDial({ score, size = 120 }: { score: number; size?: number }) {
-  const radius = (size - 12) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const clamped = Math.max(0, Math.min(100, score));
-  const dash = (clamped / 100) * circumference;
-
-  const color = clamped >= 71 ? '#2ecc8f' : clamped >= 56 ? '#7bd6a8' : clamped >= 46 ? '#d4af37' : clamped >= 31 ? '#f0a95c' : '#ff5d6c';
+  if (compact) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-ink-faint" title={explainUnavailable(unavailable)}>
+        <WarnIcon className="h-3.5 w-3.5" />
+        Insufficient Data
+      </span>
+    );
+  }
 
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="6"
-        />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
-          strokeDasharray={`${dash} ${circumference}`}
-          style={{ transition: 'stroke-dasharray 700ms cubic-bezier(0.16,1,0.3,1)' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="tnum text-2xl font-semibold" style={{ color }}>
-          {clamped.toFixed(0)}
-        </span>
-        <span className="text-[9px] uppercase tracking-[0.15em] text-ink-faint">AI Score</span>
-      </div>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line px-6 py-10 text-center">
+      <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink-faint">
+        <WarnIcon className="h-4 w-4" />
+      </span>
+      <p className="text-sm font-semibold text-ink">Insufficient Data</p>
+      <p className="mt-1.5 max-w-md text-xs leading-relaxed text-ink-muted">
+        {what ? <span className="text-ink-muted">{what}: </span> : null}
+        {explainUnavailable(unavailable)}
+      </p>
+      {hint ? <div className="mt-3 text-xs text-ink-faint">{hint}</div> : null}
     </div>
   );
 }
 
-// ── Values ──────────────────────────────────────────────────────────────────────
+export function WarnIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v5M12 16.5v.01" strokeLinecap="round" />
+    </svg>
+  );
+}
 
-export function Delta({ value, suffix = '%' }: { value: number; suffix?: string }) {
-  const positive = value > 0;
+/** A signed percentage, coloured by direction. */
+export function Delta({
+  value,
+  className,
+  showArrow = false,
+}: {
+  value: number | undefined;
+  className?: string;
+  showArrow?: boolean;
+}) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return <span className={clsx('tnum text-ink-faint', className)}>—</span>;
+  }
   const flat = value === 0;
   return (
     <span
       className={clsx(
-        'tnum text-sm font-medium',
-        flat ? 'text-ink-muted' : positive ? 'text-bull' : 'text-bear',
+        'tnum font-medium',
+        flat ? 'text-ink-muted' : value > 0 ? 'text-bull' : 'text-bear',
+        className,
       )}
     >
-      {positive ? '+' : ''}
-      {value.toFixed(2)}
-      {suffix}
+      {showArrow && !flat ? (value > 0 ? '▲ ' : '▼ ') : null}
+      {formatPercent(value)}
     </span>
   );
 }
 
-const DIRECTION_STYLE: Record<Direction, string> = {
-  bullish: 'text-bull border-bull/30 bg-bull/8',
-  bearish: 'text-bear border-bear/30 bg-bear/8',
-  neutral: 'text-ink-faint border-glass-border bg-glass',
-};
-
-export function DirectionDot({ direction }: { direction: Direction }) {
+/** Coloured pill version of Delta, for headline figures. */
+export function DeltaPill({ value }: { value: number | undefined }) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return (
+      <span className="inline-flex items-center rounded-md border border-line px-2 py-0.5 text-xs text-ink-faint">
+        —
+      </span>
+    );
+  }
+  const flat = value === 0;
   return (
     <span
       className={clsx(
-        'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px]',
-        DIRECTION_STYLE[direction],
+        'tnum inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold',
+        flat
+          ? 'bg-ink-faint/10 text-ink-muted'
+          : value > 0
+            ? 'bg-bull/10 text-bull'
+            : 'bg-bear/10 text-bear',
       )}
-      aria-label={direction}
     >
-      {direction === 'bullish' ? '▲' : direction === 'bearish' ? '▼' : '–'}
+      {formatPercent(value)}
     </span>
   );
 }
 
-/** Formats large currency values compactly without losing meaningful precision. */
-export function formatCompact(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
-  return n.toFixed(2);
+/**
+ * Where a number came from. Rendered as a companion to values rather than an
+ * optional tooltip: if a figure is on screen, its source is too.
+ */
+export function Provenance({ source, className }: { source: string; className?: string }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-faint',
+        className,
+      )}
+    >
+      <span className="inline-block h-1 w-1 rounded-full bg-accent/70" />
+      {source}
+    </span>
+  );
 }
 
-/**
- * Prices need different precision at different magnitudes: $0.00001234 for a
- * micro-cap token and $185.42 for a large-cap equity. A fixed 2 decimals would
- * render the former as $0.00.
- */
-export function formatPrice(n: number): string {
-  if (n === 0) return '0';
-  const abs = Math.abs(n);
-  if (abs >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  if (abs >= 1) return n.toFixed(2);
-  if (abs >= 0.01) return n.toFixed(4);
-  return n.toPrecision(4);
+export function Badge({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-faint',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Label/value pair used in the statistics grids. */
+export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-line bg-surface px-3.5 py-3">
+      <p className="text-[11px] uppercase tracking-wider text-ink-faint">{label}</p>
+      <p className="tnum mt-1 text-sm font-semibold text-ink">{value}</p>
+      {sub ? <p className="mt-0.5 text-[11px] text-ink-faint">{sub}</p> : null}
+    </div>
+  );
 }

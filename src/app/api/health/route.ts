@@ -1,20 +1,23 @@
 import { NextResponse } from 'next/server';
 import { providerStatus } from '@/lib/providers/registry';
-import { SCORERS } from '@/lib/analysis/engine';
+import { coverage } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
-/** Liveness + configuration report. Never returns credential values. */
+/**
+ * Liveness and configuration report. Says which keys are present, never their
+ * values — useful for checking a setup without printing secrets to a terminal.
+ */
 export async function GET() {
-  const providers = providerStatus();
   return NextResponse.json({
     status: 'ok',
-    providers: providers.map((p) => ({
+    coverage: coverage(),
+    providers: providerStatus().map((p) => ({
       id: p.id,
+      label: p.label,
       configured: p.configured,
       capabilities: p.capabilities,
     })),
-    factors: SCORERS.map((s) => ({ factor: s.factor, nominalWeight: s.weight })),
     timestamp: new Date().toISOString(),
   });
 }

@@ -1,86 +1,68 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
+import { ThemeToggle, themeInitScript } from '@/components/theme-toggle';
+import { SearchBox } from '@/components/search-box';
 
 export const metadata: Metadata = {
-  title: 'Atlas Markets AI — Global Market Intelligence',
+  title: "Batal's Brain — Live Market Dashboard",
   description:
-    'AI-scored Buy / Hold / Sell recommendations for global equities and crypto, with every figure traced to its source.',
+    'Live cryptocurrency and stock prices, search and interactive charts, sourced from CoinGecko, Binance, Finnhub and Alpha Vantage.',
 };
-
-const NAV = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/screener', label: 'Screener' },
-  { href: '/watchlist', label: 'Watchlist' },
-  { href: '/portfolio', label: 'Portfolio' },
-  { href: '/admin', label: 'System' },
-];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen">
-        <header className="sticky top-0 z-50 border-b border-glass-border/60 bg-canvas/70 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-8 px-6">
-            <Link href="/" className="flex items-center gap-2.5">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M12 2 3 20h4l5-10 5 10h4L12 2Z"
-                  fill="url(#atlas-gold)"
-                />
-                <defs>
-                  <linearGradient id="atlas-gold" x1="3" y1="2" x2="21" y2="20">
-                    <stop stopColor="#e8cd7a" />
-                    <stop offset="1" stopColor="#a8862a" />
-                  </linearGradient>
-                </defs>
-              </svg>
-              <span className="text-[15px] font-semibold tracking-tight">
-                Atlas <span className="gold-text">Markets</span>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Sets the theme class before first paint; see components/theme-toggle.tsx. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-screen antialiased">
+        <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-4 px-4 sm:px-6">
+            <Link href="/" className="flex shrink-0 items-center gap-2">
+              <Logo />
+              <span className="text-[15px] font-semibold tracking-tight text-ink">
+                Batal&apos;s <span className="text-accent">Brain</span>
               </span>
             </Link>
 
-            <nav className="hidden items-center gap-1 md:flex">
-              {NAV.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-lg px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-glass hover:text-ink"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-
-            <div className="ml-auto flex items-center gap-3">
-              <form action="/search" className="hidden sm:block">
-                <input
-                  name="q"
-                  placeholder="Search ticker, company, coin…"
-                  aria-label="Search markets"
-                  className="w-64 rounded-lg border border-glass-border bg-glass px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-gold/40"
-                />
-              </form>
-            </div>
+            <SearchBox className="ml-auto w-full max-w-xs sm:max-w-sm" />
+            <ThemeToggle />
           </div>
         </header>
 
-        <main className="mx-auto max-w-[1400px] px-6 py-8">{children}</main>
+        <main className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6 sm:py-8">{children}</main>
 
-        <footer className="mt-16 border-t border-glass-border/60 py-8">
-          <div className="mx-auto max-w-[1400px] px-6 text-xs leading-relaxed text-ink-faint">
-            <p className="mb-2">
-              <strong className="text-ink-muted">Not investment advice.</strong> Atlas Markets AI
-              produces algorithmic scores from public market data for research purposes only.
+        <footer className="mt-12 border-t border-line py-8">
+          <div className="mx-auto max-w-[1200px] space-y-2 px-4 text-xs leading-relaxed text-ink-faint sm:px-6">
+            <p>
+              <strong className="text-ink-muted">Batal&apos;s Brain</strong> — market data for
+              research and information only. Not investment advice.
             </p>
             <p>
-              Every figure displayed is attributed to the provider that supplied it. Where a
-              provider is unavailable, the affected factor is excluded from scoring and reported
-              rather than estimated.
+              Prices come from CoinGecko, Binance, Finnhub and Alpha Vantage, and each figure is
+              labelled with the source that supplied it. Where a source is unavailable the app shows{' '}
+              <span className="text-ink-muted">Insufficient Data</span> rather than an estimate.
             </p>
           </div>
         </footer>
       </body>
     </html>
+  );
+}
+
+function Logo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="2" y="2" width="20" height="20" rx="6" className="fill-accent" />
+      <path
+        d="M6.5 15.5 10 11l3 3 4.5-6"
+        stroke="white"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

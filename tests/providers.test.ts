@@ -235,9 +235,9 @@ describe('coingecko adapter', () => {
     expect(r.data.source).toBe('coingecko');
   });
 
-  it('marks OHLC candles as zero-volume so volume indicators are skipped', async () => {
-    // CoinGecko's /ohlc carries no volume. The adapter must not invent one — the
-    // indicators detect the zero and decline to compute VWAP.
+  it('marks OHLC candles as zero-volume rather than inventing a volume', async () => {
+    // CoinGecko's /ohlc carries no volume. The adapter must not fill one in, so
+    // anything downstream can tell "no volume reported" from a real figure.
     mockFetch([
       [1735603200000, 94000, 95000, 93500, 94800],
       [1735689600000, 94800, 96000, 94500, 95432],
@@ -249,10 +249,7 @@ describe('coingecko adapter', () => {
     if (!r.ok) return;
 
     expect(r.data.candles.every((c) => c.volume === 0)).toBe(true);
-
-    const { vwap, volumeRatio } = await import('@/lib/analysis/indicators');
-    expect(vwap(r.data.candles)).toBeUndefined();
-    expect(volumeRatio(r.data.candles, 1)).toBeUndefined();
+    expect(r.data.candles.map((c) => c.close)).toEqual([94800, 95432]);
   });
 
   it('extracts developer activity from the coin detail document', async () => {

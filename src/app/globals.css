@@ -4,35 +4,62 @@
 
 @layer base {
   :root {
-    --font-sans: ui-sans-serif, -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-    --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', monospace;
+    --font-sans: ui-sans-serif, -apple-system, 'Segoe UI', 'Inter', system-ui, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+
+    /* Light theme — the default. Channels, not hex, so Tailwind's /opacity works. */
+    --c-canvas: 246 247 249;
+    --c-surface: 255 255 255;
+    --c-surface-raised: 255 255 255;
+    --c-line: 224 227 233;
+    --c-ink: 15 23 42;
+    --c-ink-muted: 88 97 112;
+    --c-ink-faint: 132 141 155;
+    --c-accent: 37 99 235;
+    --c-accent-soft: 219 232 254;
+    --c-bull: 5 138 92;
+    --c-bear: 199 46 46;
+    --c-shadow: 15 23 42;
+  }
+
+  .dark {
+    --c-canvas: 9 11 16;
+    --c-surface: 17 20 27;
+    --c-surface-raised: 23 27 36;
+    --c-line: 40 46 58;
+    --c-ink: 237 240 245;
+    --c-ink-muted: 150 158 173;
+    --c-ink-faint: 108 116 131;
+    --c-accent: 96 150 255;
+    --c-accent-soft: 26 43 74;
+    --c-bull: 52 199 138;
+    --c-bear: 245 106 106;
+    --c-shadow: 0 0 0;
   }
 
   html {
-    color-scheme: dark;
     -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
   }
 
   body {
     @apply bg-canvas text-ink;
-    /* Two low-opacity radial washes give the black canvas depth without
-       introducing a visible gradient band. */
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212, 175, 55, 0.07), transparent),
-      radial-gradient(ellipse 60% 40% at 90% 10%, rgba(120, 140, 255, 0.04), transparent);
-    background-attachment: fixed;
-    font-feature-settings: 'cv02', 'cv03', 'cv04';
   }
 
-  /* Tabular figures everywhere numbers change: without this, a ticking price
-     shifts horizontally on every update because glyph widths differ. */
+  /* Tabular figures wherever numbers change: without this a ticking price shifts
+     sideways on every update because glyph widths differ. */
   .tnum {
     font-variant-numeric: tabular-nums;
     font-family: var(--font-mono);
   }
 
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2;
+    --tw-ring-offset-color: rgb(var(--c-canvas));
+  }
+
   ::selection {
-    @apply bg-gold/25 text-ink;
+    @apply bg-accent/20;
   }
 
   ::-webkit-scrollbar {
@@ -43,50 +70,30 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full;
-    background: rgba(255, 255, 255, 0.12);
+    @apply rounded-full bg-ink-faint/30;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(212, 175, 55, 0.35);
-  }
-
-  :focus-visible {
-    @apply outline-none ring-2 ring-gold/60 ring-offset-2 ring-offset-canvas;
+    @apply bg-ink-faint/50;
   }
 }
 
 @layer components {
-  .glass {
-    @apply border border-glass-border bg-glass backdrop-blur-xl;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.5);
+  .card {
+    @apply rounded-xl border border-line bg-surface shadow-card;
   }
 
-  .glass-hover {
-    @apply transition-all duration-300;
-  }
-  .glass-hover:hover {
-    @apply border-gold/25 bg-glass-strong;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 40px rgba(0, 0, 0, 0.6),
-      0 0 28px rgba(212, 175, 55, 0.08);
-    transform: translateY(-2px);
-  }
-
-  .gold-text {
-    @apply bg-gradient-to-br from-gold-soft via-gold to-gold-deep bg-clip-text text-transparent;
-  }
-
-  .hairline {
-    @apply border-glass-border;
+  .card-hover {
+    @apply transition-shadow duration-200 hover:shadow-lift;
   }
 
   /* Loading placeholder. Deliberately shapeless — a skeleton shaped like a number
      invites the eye to read a value that does not exist yet. */
   .skeleton {
-    @apply rounded bg-glass-strong;
+    @apply rounded bg-ink-faint/10;
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 255, 255, 0.06) 50%,
+      rgb(var(--c-ink-faint) / 0.12) 50%,
       transparent 100%
     );
     background-size: 200% 100%;
@@ -101,5 +108,6 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

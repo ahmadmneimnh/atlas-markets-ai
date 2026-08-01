@@ -120,16 +120,23 @@ export const alphavantage: Provider = {
       }
       if (!r['Symbol']) return unavailable('not_found', `no overview for ${symbol}`);
 
+      // Alpha Vantage returns rates as fractions (0.253) where the domain type is a
+      // percentage (25.3), and market cap already in whole dollars.
+      const pct = (v: unknown): number | undefined => {
+        const parsed = num(v);
+        return parsed === undefined ? undefined : parsed * 100;
+      };
+
       const out: Fundamentals = { symbol, source: 'alphavantage', asOf: new Date() };
       setNumber(out, 'peRatio', num(r['PERatio']));
       setNumber(out, 'pegRatio', num(r['PEGRatio']));
       setNumber(out, 'eps', num(r['EPS']));
-      setNumber(out, 'profitMargin', num(r['ProfitMargin']));
-      setNumber(out, 'roe', num(r['ReturnOnEquityTTM']));
+      setNumber(out, 'profitMargin', pct(r['ProfitMargin']));
+      setNumber(out, 'roe', pct(r['ReturnOnEquityTTM']));
       setNumber(out, 'marketCap', num(r['MarketCapitalization']));
-      setNumber(out, 'dividendYield', num(r['DividendYield']));
-      setNumber(out, 'revenueGrowthYoY', num(r['QuarterlyRevenueGrowthYOY']));
-      setNumber(out, 'earningsGrowthYoY', num(r['QuarterlyEarningsGrowthYOY']));
+      setNumber(out, 'dividendYield', pct(r['DividendYield']));
+      setNumber(out, 'revenueGrowthYoY', pct(r['QuarterlyRevenueGrowthYOY']));
+      setNumber(out, 'earningsGrowthYoY', pct(r['QuarterlyEarningsGrowthYOY']));
 
       return ok(out);
     } catch (e) {

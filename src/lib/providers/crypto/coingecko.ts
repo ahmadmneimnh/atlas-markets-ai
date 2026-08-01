@@ -79,7 +79,7 @@ async function resolveId(symbol: string): Promise<string | null> {
 export const coingecko: Provider = {
   id: 'coingecko',
   label: 'CoinGecko',
-  capabilities: ['crypto.quote', 'crypto.metrics', 'ohlcv', 'search'],
+  capabilities: ['crypto.quote', 'crypto.metrics', 'crypto.ohlcv', 'search'],
 
   // Public tier requires no credential, so this provider is always available.
   isConfigured: () => true,

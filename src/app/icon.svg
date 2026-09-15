@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- The header logo mark, redrawn full-bleed for a browser tab. Colours are
+       literal rather than themed: a favicon renders outside the page, so the CSS
+       variables the rest of the app uses are not available to it. -->
+  <rect width="32" height="32" rx="8" fill="#2563eb" />
+  <path
+    d="M8 20.5 13 14l4 4 6.5-8.5"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="2.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
